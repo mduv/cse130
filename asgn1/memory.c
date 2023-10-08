@@ -3,6 +3,9 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <string.h>
+#include <linux/limits.h>
+#include <sys/stat.h>
+
 
 #define MAX_INPUTLINE_SIZE 4096
 #define MAX_BUFFER_SIZE 4096
@@ -30,6 +33,32 @@ void get(const char *location) {
     close(fd);
 }
 
+void set(const char *location, int length, const char* content) {
+    // open file for write, create if it doen;t exist
+    // printf("this far\n");
+    int fd = open(location, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+    if (fd == -1) {
+        perror("Unable to open file");
+        exit(1);
+    }
+
+    
+
+    // write content to file
+    int bytesWritten = write(fd, content, length);
+    if (bytesWritten != length) {
+        perror("bytesWritten do not match content length");
+        close(fd);
+        exit(1);
+    }
+
+    // close file
+    close(fd);
+
+    // Output success message
+    write(STDOUT_FILENO, "OK\n", 3);
+    
+}
 
 int main(void) {
     /* READ INPUT COMMAND FROM STDIN */
@@ -54,18 +83,50 @@ int main(void) {
             if (token != NULL) {
                 get(token);
             } else {
-                perror("Invalid get command");
+                perror("Invalid Command\n");
             }
+        } else if (strcmp(token, "set") == 0) {
+            token = strtok(NULL, "\n");
+
+            if (token != NULL) {
+                // get location,
+                char* location = token;
+                // printf("%s\n", location);
+                // get content_length
+                token = strtok(NULL, "\n");
+                // printf("%s\n", token);
+                // printf("%d\n", token != NULL);
+                if (token == NULL) {
+                    perror("Invalid Command\n");
+                    exit(1);
+                }
+                int length = atoi(token);
+                // printf("%d\n", length);
+                // get content
+                token = strtok(NULL, "\n");
+                if (token == NULL) {
+                    perror("Invalid Command\n");
+                    exit(1);
+                    // printf("%s\n", token);
+                    
+                }
+                char* content = token;
+                set(location, length, content);
+                break;
+            } else {
+                perror("Invalid Command\n");
+                exit(1);
+            } 
+        } else {
+            printf("%s\n", token);
+            perror("Invalid Command\n");
+            exit(1);
         }
-        // printf( "%s\n", token);
-        // get next token
-        token = strtok(NULL, "\n");
-    }
-
-    return 0;
     
-
+    }
+    return 0;
 }
+
 
 
 
