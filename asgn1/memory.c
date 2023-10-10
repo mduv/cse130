@@ -14,10 +14,14 @@
 /* HANDLE GET */
 void get(const char *location) {
     // open file @ location for reading
+    if (strlen(location) < PATH_MAX) {
+        write(STDERR_FILENO, "Invalid Command\n", sizeof("Invalid Command\n") - 1);
+        exit(1);
+    }
     int fd = open(location, O_RDONLY);
     if (fd == -1) {
         perror("Unable to open file");
-        exit(1);
+        exit(0);
     }
 
     // read and write to stdout
@@ -27,7 +31,7 @@ void get(const char *location) {
         write(1, buf, bytesRead);
     }
 
-    write(1, buf, bytesRead);
+    // write(1, buf, bytesRead);
 
     // close file
     close(fd);
@@ -39,7 +43,7 @@ void set(const char *location, int length, const char* content) {
     int fd = open(location, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
     if (fd == -1) {
         perror("Unable to open file");
-        exit(1);
+        exit(0);
     }
 
     
@@ -49,7 +53,7 @@ void set(const char *location, int length, const char* content) {
     if (bytesWritten != length) {
         perror("bytesWritten do not match content length");
         close(fd);
-        exit(1);
+        exit(0);
     }
 
     // close file
@@ -66,7 +70,11 @@ int main(void) {
     char inputLine[MAX_INPUTLINE_SIZE];
     int bytesRead = read(0, inputLine, 4096);
     if (bytesRead <= 0) {
-        perror("Something went wrong");
+        if (bytesRead == 0) {
+            perror("Invalid command: stdin was closed before user provided a location");
+        } else {
+            perror("Error reading command");
+        }
         exit(1);
     }
 
@@ -80,10 +88,16 @@ int main(void) {
         // see if it's a get command
         if (strcmp(token, "get") == 0) {
             token = strtok(NULL, "\n");
+            char* token2 = strtok(NULL, "\n");
+            if (token2 == NULL) {
+                write(STDERR_FILENO, "Invalid Command\n", sizeof("Invalid Command\n") - 1);
+                exit(1);
+            }
             if (token != NULL) {
                 get(token);
             } else {
-                perror("Invalid Command\n");
+                write(STDERR_FILENO, "Invalid Command\n", sizeof("Invalid Command\n") - 1);
+                exit(1);
             }
         } else if (strcmp(token, "set") == 0) {
             token = strtok(NULL, "\n");
@@ -98,7 +112,7 @@ int main(void) {
                 // printf("%d\n", token != NULL);
                 if (token == NULL) {
                     perror("Invalid Command\n");
-                    exit(1);
+                    exit(0);
                 }
                 int length = atoi(token);
                 // printf("%d\n", length);
@@ -115,11 +129,11 @@ int main(void) {
                 break;
             } else {
                 perror("Invalid Command\n");
-                exit(1);
+                exit(0);
             } 
         } else {
-            printf("%s\n", token);
-            perror("Invalid Command\n");
+            // printf("%s\n", token);
+            write(STDERR_FILENO, "Invalid Command\n", sizeof("Invalid Command\n") - 1);
             exit(1);
         }
     
