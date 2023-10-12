@@ -6,10 +6,26 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <limits.h>
+#include <sys/param.h>
 
 
 #define MAX_INPUTLINE_SIZE 4096
 #define MAX_BUFFER_SIZE 4096
+
+char inputLine[MAX_INPUTLINE_SIZE];
+int bytesRead ;
+char original_input[MAX_INPUTLINE_SIZE];
+
+
+#define DEBUG 0
+
+
+
+void debug_printf(char *output, char *fromat) {
+    if (DEBUG == 1) {
+     printf(output, fromat);
+    }
+}
 
 
 int is_directory(int fd) {
@@ -23,11 +39,35 @@ int is_directory(int fd) {
     return 0;
 }
 
+int read_input() {
+    int bytesRead = 0;
+    int totalBytesRead = 0;
+
+    while ((bytesRead = read(STDIN_FILENO, inputLine + totalBytesRead, MAX_INPUTLINE_SIZE - totalBytesRead)) > 0) {
+        totalBytesRead += bytesRead;
+        // printf("total bytes read: %d\n", totalBytesRead);
+
+        // Check if buffer is full
+        if (totalBytesRead == MAX_INPUTLINE_SIZE) {
+            // fprintf(stderr, "Invalid command: Input buffer full\n");
+            return (totalBytesRead);
+        }
+    }
+
+    if (bytesRead == -1) {
+       fprintf(stderr, "Invalid command: error reading input\n");
+       return (-1);
+    }
+    return totalBytesRead;
+}
+
 void get(const char *location) {
-    // if (location[strlen(location)] != '\n') {
-    //     write(STDERR_FILENO, "Invalid Command\n", sizeof("Invalid Command\n") - 1);
+
+    // if ((inputLine[bytesRead-1] != '\n')) {
+    //     fprintf(stderr, "Invalid Command\n");
     //     exit(1);
     // }
+
     int fd = open(location, O_RDONLY);
     // printf("%d\n", fd);
     if (fd == -1) {
@@ -60,33 +100,60 @@ void get(const char *location) {
 
 
 
-void set(const char *location, int length, const char *content) {
+
+void set(const char *location, int length, const char *content, int content_length) {
+
+
+    // char buffer[MAX_BUFFER_SIZE];
+
     int fd = open(location, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
     if (fd == -1) {
         write(STDERR_FILENO, "Invalid Command: Unable to open set\n", sizeof("Invalid Command: Unable to open set\n") - 1);
         exit(1);
     }
 
-    if (content == NULL) {
+    // printf("content length : %d\n", content_length);
+    // printf("length : %d\n", length);
+
+    if (content == NULL || content_length == 0)   {
         printf("OK\n");
         exit(0);
     }
 
-    ssize_t bytesWritten = write(fd, content, length - 1);
+    ssize_t bytesWritten = write(fd, content, MIN(content_length, length - 1));
     // printf("Set - bytesWritten: %zd\n", bytesWritten);
 
-    if (bytesWritten == -1) {
-        write(STDERR_FILENO, "Invalid Command: error bytes written\n", sizeof("Invalid Command: error bytes written\n") - 1);
-        close(fd);
-        exit(1);
-    }
+    int bytesRemaining = length - bytesWritten;
+    // printf("Set - bytesRemaining: %d\n", bytesRemaining);
 
-    // Append a newline character
-    if (write(fd, "\n", 1) == -1) {
-        perror("Error writing newline to file");
-        close(fd);
-        exit(1);
+    while ((bytesRead = read_input()) > 0 && (bytesRemaining > 0)) {
+        bytesRemaining = bytesRemaining - bytesRead;
+        bytesWritten = write(fd, inputLine, bytesRead);
+
+        if (bytesWritten == -1) {
+            write(STDERR_FILENO, "Invalid Command: error bytes written\n", sizeof("Invalid Command: error bytes written\n") - 1);
+            close(fd);
+            exit(1);
+        }
+        // printf("Set - bytesWritten1: %zd\n", bytesWritten);
+
     }
+    // if (bytesWritten == -1) {
+    //     write(STDERR_FILENO, "Invalid Command: error bytes written\n", sizeof("Invalid Command: error bytes written\n") - 1);
+    //     close(fd);
+    //     exit(1);
+    // }
+
+    if (bytesRead == 0 && bytesRemaining == 1) {
+        // we should append a null line as this is striped by strtok()
+        write(fd, "\n", 1);
+    }
+    // // Append a newline character
+    // if (write(fd, "\n", 1) == -1) {
+    //     perror("Error writing newline to file");
+    //     close(fd);
+    //     exit(1);
+    // }
 
     // printf("Set - Content being written: %d, %s\n", length, content);
 
@@ -98,11 +165,15 @@ void set(const char *location, int length, const char *content) {
 }
 
 
+
+
 int main() {
-    char inputLine[MAX_INPUTLINE_SIZE];
     // printf("Main - inputLine: %s\n", inputLine);
-    int bytesRead = read(0, inputLine, MAX_INPUTLINE_SIZE);
+
+    int bytesRead = read_input();
     // printf("Main - bytesRead: %d\n", bytesRead);
+    // printf("Main - inputline: %s------\n", inputLine);
+    // printf("Main - inputline: %lu------\n", strlen(inputLine));
 
     if (bytesRead <= 0) {
         if (bytesRead == 0) {
@@ -113,28 +184,17 @@ int main() {
         exit(1);
     }
 
-    if ((bytesRead > 1)  && ( inputLine[bytesRead-1] != '\n')) {
-        fprintf(stderr, "Invalid Command\n");
-        exit(1);
-    }
-
-    // Check if there is a newline character at the end
-    // if (inputLine[bytesRead - 1] != '\n') {
-    //     write(STDERR_FILENO, "Invalid command: Missing newline character at the end\n", sizeof("Invalid command: Missing newline character at the end\n") - 1);
-    //     exit(1);
-    // }
 
     // Ensure null-termination of the input line
     // inputLine[bytesRead] = '\0';
-
-    // Parse the command and handle get or set
-    char *token = strtok(inputLine, "\n");
+    strcpy(original_input, inputLine);
+    char *saveptr;
+    char *token = strtok_r(inputLine, "\n", &saveptr);
     char* location;
-    // printf("Main - token: %s\n", token);
     if (token != NULL) {
         if (strcmp(token, "get") == 0) {
             // Handle get command
-            location = strtok(NULL, "\n");
+            location = strtok_r(NULL, "\n", &saveptr);
             if (location == NULL) {
                 fprintf(stderr, "Invalid Command: no location given after get\n");
             }
@@ -145,19 +205,24 @@ int main() {
             //     fprintf(stderr, "Invalid Command: extra command after get\n");
             //     exit(1);
             // }
+            if ((bytesRead > 1)  && ( original_input[bytesRead-1] != '\n')) {
+                    fprintf(stderr, "Invalid Command\n");
+                    exit(1);
+            }
             get(location);
         } else if (strcmp(token, "set") == 0) {
             // Handle set command
-            char* location = strtok(NULL, "\n");
+            char* location = strtok_r(NULL, "\n", &saveptr);
             // printf("Main - location: %s\n", location);
             if (location == NULL) {
                 fprintf(stderr, "Invalid Command: missing location after set\n");
                 exit(1);
             }
             
+            // printf("location = %s\n", location);
 
             // Read the content length and content
-            token = strtok(NULL, "\n");
+            token = strtok_r(NULL, "\n", &saveptr);
             if (token == NULL) {
                 fprintf(stderr, "Invalid Command: missing content length after set\n");
                 exit(1);
@@ -172,21 +237,14 @@ int main() {
                 exit(1);
             }
 
-            char* content;
-            content = strtok(NULL, "\n");
+            // printf("contentLength = %d\n", contentLength);
+            int bytes_tokenized = saveptr - inputLine;
+            int bytes_remaining = bytesRead - bytes_tokenized;
 
-            
-            // printf("Main - content: %s\n", content);
-
-            // if (content[bytesRead - 1] == '\n') {
-            //     printf("Last character is a newline character.\n");
-            // } else {
-            //     printf("Last character is not a newline character.\n");
-            // }
-
-            // printf("Main - content length: %d\n", contentLength);   
-            // Process the set command with the valid content
-            set(location, contentLength, content);
+            // printf("bytes tokentized: %d\n", bytes_tokenized);
+            // printf("bytes remaining in the buffer: %d\n", bytes_remaining);
+        
+            set(location, contentLength, saveptr, bytes_remaining);
         } else {
             fprintf(stderr, "Invalid Command\n");
             // fprintf(stderr, "Invalid command, not get or set command\n");
