@@ -17,12 +17,6 @@ char original_input[MAX_INPUTLINE_SIZE];
 
 #define DEBUG 0
 
-void debug_printf(char *output, char *fromat) {
-    if (DEBUG == 1) {
-        printf(output, fromat);
-    }
-}
-
 int is_directory(int fd) {
     struct stat buf;
     if (fstat(fd, &buf) != 0) {
@@ -40,9 +34,8 @@ int read_input() {
 
     // printf("read input\n");
 
-    while ((bytesRead = read(
-                STDIN_FILENO, inputLine + totalBytesRead, MAX_INPUTLINE_SIZE - totalBytesRead))
-           > 0) {
+    // buffer to read stdin
+    while ((bytesRead = read(STDIN_FILENO, inputLine + totalBytesRead, MAX_INPUTLINE_SIZE - totalBytesRead)) > 0) {
         totalBytesRead += bytesRead;
         // fprintf(stderr, "total bytes read: %d\n", totalBytesRead);
 
@@ -60,6 +53,8 @@ int read_input() {
     return totalBytesRead;
 }
 
+
+// write whatever is read into buffer
 int write_buffer(int fd, char *buffer, int bytes) {
     int byteToWrite = bytes;
     int byteWritten = 0;
@@ -77,12 +72,8 @@ int write_buffer(int fd, char *buffer, int bytes) {
     return (bytes);
 }
 
-void get(const char *location) {
 
-    // if ((inputLine[bytesRead-1] != '\n')) {
-    //     fprintf(stderr, "Invalid Command\n");
-    //     exit(1);
-    // }
+void get(const char *location) {
 
     int fd = open(location, O_RDONLY);
     // printf("%d\n", fd);
