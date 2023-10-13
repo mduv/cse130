@@ -8,31 +8,26 @@
 #include <limits.h>
 #include <sys/param.h>
 
-
 #define MAX_INPUTLINE_SIZE 4096
-#define MAX_BUFFER_SIZE 4096
+#define MAX_BUFFER_SIZE    4096
 
 char inputLine[MAX_INPUTLINE_SIZE];
-int bytesRead ;
+int bytesRead;
 char original_input[MAX_INPUTLINE_SIZE];
-
 
 #define DEBUG 0
 
-
-
 void debug_printf(char *output, char *fromat) {
     if (DEBUG == 1) {
-     printf(output, fromat);
+        printf(output, fromat);
     }
 }
-
 
 int is_directory(int fd) {
     struct stat buf;
     if (fstat(fd, &buf) != 0) {
         return -1;
-    }       
+    }
     if (S_ISDIR(buf.st_mode)) {
         return 1;
     }
@@ -45,7 +40,9 @@ int read_input() {
 
     // printf("read input\n");
 
-    while ((bytesRead = read(STDIN_FILENO, inputLine + totalBytesRead, MAX_INPUTLINE_SIZE - totalBytesRead)) > 0) {
+    while ((bytesRead = read(
+                STDIN_FILENO, inputLine + totalBytesRead, MAX_INPUTLINE_SIZE - totalBytesRead))
+           > 0) {
         totalBytesRead += bytesRead;
         // fprintf(stderr, "total bytes read: %d\n", totalBytesRead);
 
@@ -57,31 +54,28 @@ int read_input() {
     }
 
     if (bytesRead == -1) {
-       fprintf(stderr, "Invalid command: error reading input\n");
-       return (-1);
+        fprintf(stderr, "Invalid command: error reading input\n");
+        return (-1);
     }
     return totalBytesRead;
 }
 
-int write_buffer(int fd, char *buffer, int bytes) 
-{
-        int byteToWrite = bytes;
-        int byteWritten = 0;
-        int totalBytesWritten = 0;
+int write_buffer(int fd, char *buffer, int bytes) {
+    int byteToWrite = bytes;
+    int byteWritten = 0;
+    int totalBytesWritten = 0;
 
-        while ((byteWritten = write(fd, buffer+totalBytesWritten, byteToWrite)) != byteToWrite) {
-            if (byteWritten == -1) {
-                return (-1);
-            }
-            totalBytesWritten += byteWritten;
-            byteToWrite = byteToWrite - byteWritten;
-
-            fprintf(stderr, "write_buffer: byteswrite %d\n", byteWritten);
-
+    while ((byteWritten = write(fd, buffer + totalBytesWritten, byteToWrite)) != byteToWrite) {
+        if (byteWritten == -1) {
+            return (-1);
         }
-        return (bytes);
-}
+        totalBytesWritten += byteWritten;
+        byteToWrite = byteToWrite - byteWritten;
 
+        fprintf(stderr, "write_buffer: byteswrite %d\n", byteWritten);
+    }
+    return (bytes);
+}
 
 void get(const char *location) {
 
@@ -98,7 +92,7 @@ void get(const char *location) {
         exit(1);
     }
 
-    if (is_directory(fd) != 0)  {
+    if (is_directory(fd) != 0) {
         fprintf(stderr, "Invalid Command\n");
         exit(1);
     }
@@ -123,24 +117,21 @@ void get(const char *location) {
     close(fd);
 }
 
-
-
-
 void set(const char *location, int length, const char *content, int content_length) {
-
 
     // char buffer[MAX_BUFFER_SIZE];
 
     int fd = open(location, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
     if (fd == -1) {
-        write(STDERR_FILENO, "Invalid Command: Unable to open set\n", sizeof("Invalid Command: Unable to open set\n") - 1);
+        write(STDERR_FILENO, "Invalid Command: Unable to open set\n",
+            sizeof("Invalid Command: Unable to open set\n") - 1);
         exit(1);
     }
 
     // printf("content length : %d\n", content_length);
     // printf("length : %d\n", length);
 
-    if (content == NULL || content_length == 0)   {
+    if (content == NULL || content_length == 0) {
         printf("OK\n");
         exit(0);
     }
@@ -156,12 +147,12 @@ void set(const char *location, int length, const char *content, int content_leng
         bytesWritten = write(fd, inputLine, bytesRead);
 
         if (bytesWritten == -1) {
-            write(STDERR_FILENO, "Invalid Command: error bytes written\n", sizeof("Invalid Command: error bytes written\n") - 1);
+            write(STDERR_FILENO, "Invalid Command: error bytes written\n",
+                sizeof("Invalid Command: error bytes written\n") - 1);
             close(fd);
             exit(1);
         }
         // printf("Set - bytesWritten1: %zd\n", bytesWritten);
-
     }
     // if (bytesWritten == -1) {
     //     write(STDERR_FILENO, "Invalid Command: error bytes written\n", sizeof("Invalid Command: error bytes written\n") - 1);
@@ -182,15 +173,10 @@ void set(const char *location, int length, const char *content, int content_leng
 
     // printf("Set - Content being written: %d, %s\n", length, content);
 
-    
-
     close(fd);
     printf("OK\n");
     exit(0);
 }
-
-
-
 
 int main() {
 
@@ -209,13 +195,12 @@ int main() {
         exit(1);
     }
 
-
     // Ensure null-termination of the input line
     // inputLine[bytesRead] = '\0';
     strcpy(original_input, inputLine);
     char *saveptr;
     char *token = strtok_r(inputLine, "\n", &saveptr);
-    char* location;
+    char *location;
     if (token != NULL) {
         if (strcmp(token, "get") == 0) {
             // Handle get command
@@ -230,20 +215,20 @@ int main() {
             //     fprintf(stderr, "Invalid Command: extra command after get\n");
             //     exit(1);
             // }
-            if ((bytesRead > 1)  && ( original_input[bytesRead-1] != '\n')) {
-                    fprintf(stderr, "Invalid Command\n");
-                    exit(1);
+            if ((bytesRead > 1) && (original_input[bytesRead - 1] != '\n')) {
+                fprintf(stderr, "Invalid Command\n");
+                exit(1);
             }
             get(location);
         } else if (strcmp(token, "set") == 0) {
             // Handle set command
-            char* location = strtok_r(NULL, "\n", &saveptr);
+            char *location = strtok_r(NULL, "\n", &saveptr);
             // printf("Main - location: %s\n", location);
             if (location == NULL) {
                 fprintf(stderr, "Invalid Command: missing location after set\n");
                 exit(1);
             }
-            
+
             // printf("location = %s\n", location);
 
             // Read the content length and content
@@ -254,7 +239,6 @@ int main() {
             }
             // printf("Main - token: %s\n", token);
             int contentLength = atoi(token);
-
 
             // Check if the last character is a newline
             if (contentLength < 0) {
@@ -268,7 +252,7 @@ int main() {
 
             // printf("bytes tokentized: %d\n", bytes_tokenized);
             // printf("bytes remaining in the buffer: %d\n", bytes_remaining);
-        
+
             set(location, contentLength, saveptr, bytes_remaining);
         } else {
             fprintf(stderr, "Invalid Command\n");
@@ -282,5 +266,3 @@ int main() {
 
     return 0;
 }
-
-
