@@ -43,9 +43,11 @@ int read_input() {
     int bytesRead = 0;
     int totalBytesRead = 0;
 
+    // printf("read input\n");
+
     while ((bytesRead = read(STDIN_FILENO, inputLine + totalBytesRead, MAX_INPUTLINE_SIZE - totalBytesRead)) > 0) {
         totalBytesRead += bytesRead;
-        // printf("total bytes read: %d\n", totalBytesRead);
+        // fprintf(stderr, "total bytes read: %d\n", totalBytesRead);
 
         // Check if buffer is full
         if (totalBytesRead == MAX_INPUTLINE_SIZE) {
@@ -60,6 +62,26 @@ int read_input() {
     }
     return totalBytesRead;
 }
+
+int write_buffer(int fd, char *buffer, int bytes) 
+{
+        int byteToWrite = bytes;
+        int byteWritten = 0;
+        int totalBytesWritten = 0;
+
+        while ((byteWritten = write(fd, buffer+totalBytesWritten, byteToWrite)) != byteToWrite) {
+            if (byteWritten == -1) {
+                return (-1);
+            }
+            totalBytesWritten += byteWritten;
+            byteToWrite = byteToWrite - byteWritten;
+
+            fprintf(stderr, "write_buffer: byteswrite %d\n", byteWritten);
+
+        }
+        return (bytes);
+}
+
 
 void get(const char *location) {
 
@@ -83,11 +105,14 @@ void get(const char *location) {
 
     char buf[MAX_BUFFER_SIZE];
     int bytesRead;
+    int bytesWrite;
     while ((bytesRead = read(fd, buf, MAX_BUFFER_SIZE)) > 0) {
-        if (write(STDOUT_FILENO, buf, bytesRead) == -1) {
+        // fprintf(stderr, "bytesread: %d\n", bytesRead);
+        if ((bytesWrite = write_buffer(STDOUT_FILENO, buf, bytesRead)) == -1) {
             fprintf(stderr, "Unable to write to stdout\n");
             exit(1);
         }
+        // fprintf(stderr, "byteswrite %d\n", bytesWrite);
     }
 
     // if (bytesRead < 0) {
@@ -120,7 +145,7 @@ void set(const char *location, int length, const char *content, int content_leng
         exit(0);
     }
 
-    ssize_t bytesWritten = write(fd, content, MIN(content_length, length - 1));
+    ssize_t bytesWritten = write(fd, content, MIN(content_length, length));
     // printf("Set - bytesWritten: %zd\n", bytesWritten);
 
     int bytesRemaining = length - bytesWritten;
@@ -168,12 +193,12 @@ void set(const char *location, int length, const char *content, int content_leng
 
 
 int main() {
-    // printf("Main - inputLine: %s\n", inputLine);
 
     int bytesRead = read_input();
-    // printf("Main - bytesRead: %d\n", bytesRead);
-    // printf("Main - inputline: %s------\n", inputLine);
-    // printf("Main - inputline: %lu------\n", strlen(inputLine));
+
+    // fprintf(stderr, "Main - bytesRead: %d\n", bytesRead);
+    // fprintf(stderr, "Main - inputline: %s------\n", inputLine);
+    // fprintf(stderr, "Main - inputline: %lu------\n", strlen(inputLine));
 
     if (bytesRead <= 0) {
         if (bytesRead == 0) {
@@ -259,44 +284,3 @@ int main() {
 }
 
 
-
-
-// void get() {
-//     char *token;
-//     const char s[2] =  "\n";
-//     token = strtok(NULL, s);
-
-
-// }
-// void set() {
-// char *token;
-// const char s[2] =  "\n";
-// token = strtok(NULL, s);
-
-// }
-
-// int main() {
-//     char inputLine[MAX_INPUTLINE_SIZE];
-//     int bytesRead = read(0, inputLine, MAX_INPUTLINE_SIZE);
-//     if (bytesRead <= 0) {
-//         printf("Something went wrong\n");
-//     }
-//     const char s[2] =  "\n";
-//     char *token;
-//     /* get the first token */
-//     token = strtok(inputLine, s);
-    
-//     /* walk through other tokens */
-//     while( token != NULL ) {
-//         printf( "%s\n", token );
-//         if (strcmp(token, "get") == 0 ) {
-//             get();
-//         } else if (strcmp(token, "set") == 0) {
-//             set();
-//         }  else {
-//             fprintf(stderr, "Invalid Command\n");
-//             exit(1);
-//         }
-//     }
-//     return(0);
-// }
