@@ -21,6 +21,15 @@ void send_response(int socket, int status_code, const char *status_text, const c
     write(socket, response, strlen(response));
 }
 
+size_t get_content_length(const char *headers) {
+    const char *content_length_str = strstr(headers, "Content-Length: ");
+    if (content_length_str) {
+        // Skip the "Content-Length: " prefix
+        content_length_str += strlen("Content-Length: ");
+        return atoi(content_length_str);
+    }
+    return 0;  // Default to 0 if not found or parsing fails
+}
 
 // Function to validate the URI
 int validate_uri(const char *uri) {
@@ -94,18 +103,26 @@ int main(int argc, char *argv[]) {
 
         // Parse the request and handle it
         // Parse the request line
-        char *method, *uri, *version;
-        int parsed = sscanf(request_buffer, "%m[^ ] %m[^ ] %m[^\r\n]", &method, &uri, &version);
+        char *method, *uri, *version, *headers, *content;
+        int parsed = sscanf(request_buffer, "%m[^ ] %m[^ ] %m[^\r\n]\r\n%m[^\r\n]\r\n\r\n%m[^\r\n]", &method, &uri, &version, &headers, &content);
 
-        if (parsed != 3) {
+        if (parsed > 5) {
             // Invalid request format
             fprintf(stderr, "Invalid request format\n");
             // Your code for sending an appropriate response goes here
             continue;
         }
 
+        // char *write_ptr = request_buffer;
+        // int add = strlen(uri) + strlen(method) + strlen(version) + 1 + 1 + 2 + strlen(headers) + 4;
+        // write_ptr += add;
+        // printf("add: %d", add);
+
         // Process the parsed information
-        printf("Method: %s, URI: %s, Version: %s\n", method, uri, version);
+        printf("Method: %s, URI: %s, Version: %s, Headers: %s, Content: %s\n", method, uri, version, headers, content);
+        printf("content length: %zu\n", get_content_length(headers));
+
+        
 
         // Your code for handling the HTTP request goes here
         if (strcmp(method, "GET") == 0) {
@@ -173,41 +190,58 @@ int main(int argc, char *argv[]) {
 
             // Your code for handling a GET request goes here
         } else if (strcmp(method, "PUT") == 0) {
-            // Handle PUT request
-            printf("Handling PUT request\n");
+            // Find the position where the content starts in the buffer
+            char *content_start = strstr(request_buffer, "\r\n\r\n");
+            if (content_start != NULL) {
+                // Move the pointer to the start of the content
+                content_start += 4;  // Skip "\r\n\r\n"
 
-            // Your code for handling a valid PUT request goes here
-
-            // Open or create the file for writing
-            int file_descriptor = open(uri + 1, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);  // Skip the leading '/'
-            if (file_descriptor != -1) {
-                // Write the content to the file
-                ssize_t bytes_written = write(file_descriptor, request_buffer, 57);
-
-                if (bytes_written != -1) {
-                    // Close the file
-                    close(file_descriptor);
-
-                    // Send the HTTP response
-                    send_response(client_socket, 200, "OK", "OK\n", 3);
-
-                    // Continue to the next iteration of the loop
+                // Check for Content-Length header
+                size_t content_length = get_content_length(headers);
+                if (content_length == 0) {
+                    // Content-Length header not found or invalid
+                    send_response(client_socket, 400, "Bad Request", "Content-Length header missing or invalid\n", 40);
                     continue;
-                } else {
-                    // Error writing to the file
-                    perror("Error writing to file");
                 }
 
-                // Close the file in case of an error
-                close(file_descriptor);
-            } else {
-                // Error opening or creating the file
-                perror("Error opening/creating file");
+                // Open or create the file for writing
+                int file_descriptor = open(uri + 1, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);  // Skip the leading '/'
+                if (file_descriptor != -1) {
+                    // Write the content to the file starting from the content_start position
+                    size_t bytes_written = write(file_descriptor, content_start, content_length);
 
-                // Send an internal server error response
-                send_response(client_socket, 500, "Internal Server Error", "Internal Server Error\n", 21);
-            }
+                    if (bytes_written == content_length) {
+                        // Successful write
+                        // Close the file
+                        close(file_descriptor);
 
+                        // Send the HTTP response
+                        send_response(client_socket, 200, "OK", "OK\n", 3);
+                    } else {
+                        // Error writing to the file
+                        perror("Error writing to file");
+
+                        // Close the file
+                        close(file_descriptor);
+
+                        // Send an internal server error response
+                        send_response(client_socket, 500, "Internal Server Error", "Internal Server Error\n", 21);
+                    }
+                } else {
+                    // Error opening or creating the file
+                    perror("Error opening/creating file");
+
+                    // Send an internal server error response
+                    send_response(client_socket, 500, "Internal Server Error", "Internal Server Error\n", 21);
+                }
+        } else {
+            // Error opening or creating the file
+            perror("Error opening/creating file");
+
+            // Send an internal server error response
+            send_response(client_socket, 500, "Internal Server Error", "Internal Server Error\n", 21);
+        }
+        
         } else {
             // Unsupported method
             fprintf(stderr, "Unsupported method: %s\n", method);
