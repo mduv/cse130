@@ -5,20 +5,50 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/stat.h>
-
+#include <regex.h>
 
 
 #include "asgn2_helper_funcs.h"
 #define MAX_BUFFER_SIZE 2048
 
+#include <regex.h>
 
-void send_response(int socket, int status_code, const char *status_text, const char *content, size_t content_length) {
+
+
+// write whatever is read into buffer
+int write_buffer(int fd, char *buffer, int bytes) {
+    int byteToWrite = bytes;
+    int byteWritten = 0;
+    int totalBytesWritten = 0;
+
+    while ((byteWritten = write(fd, buffer + totalBytesWritten, byteToWrite)) != byteToWrite) {
+        if (byteWritten == -1) {
+            return (-1);
+        }
+        totalBytesWritten += byteWritten;
+        byteToWrite = byteToWrite - byteWritten;
+
+        fprintf(stderr, "write_buffer: byteswrite %d\n", byteWritten);
+    }
+    return (bytes);
+}
+
+
+void send_response(int socket, int status_code, char *status_text, char *content, size_t content_length) {
     // Assuming a simple HTTP/1.1 response format
-    char response[2048];
-    sprintf(response, "HTTP/1.1 %d %s\r\nContent-Length: %zu\r\n\r\n%s", status_code, status_text, content_length, content);
+    char response[100];
+
+    sprintf(response, "HTTP/1.1 %d %s\r\nContent-Length: %zu\r\n\r\n", status_code, status_text, content_length);
+
+    printf("response length: %lu, content length: %zu\n", strlen(response), content_length);
+
+    
 
     // Send the response to the client
     write(socket, response, strlen(response));
+
+    write_n_bytes(socket, content, content_length);
+
 }
 
 size_t get_content_length(const char *headers) {
@@ -54,6 +84,62 @@ int validate_uri(const char *uri) {
 }
 
 
+int useRegex(char* textToCheck) {
+    regex_t compiledRegex;
+    int reti;
+    int actualReturnValue = -1;
+    // char messageBuffer[100];
+
+    /* Compile regular expression */
+    reti = regcomp(&compiledRegex, "^HTTP/[0-9]\\.[0-9]$", REG_EXTENDED | REG_ICASE);
+    if (reti) {
+        fprintf(stderr, "Could not compile regex\n");
+        return -2;
+    }
+
+    /* Execute compiled regular expression */
+    reti = regexec(&compiledRegex, textToCheck, 0, NULL, 0);
+    if (!reti) {
+        // match
+        actualReturnValue = 0;
+    } else if (reti == REG_NOMATCH) {
+        // puts("No match");
+        actualReturnValue = 1;
+    } else {
+        // regerror(reti, &compiledRegex, messageBuffer, sizeof(messageBuffer));
+        // fprintf(stderr, "Regex match failed: %s\n", messageBuffer);
+        actualReturnValue = -3;
+    }
+
+    /* Free memory allocated to the pattern buffer by regcomp() */
+    regfree(&compiledRegex);
+    return actualReturnValue;
+}
+
+int validate_version(char *version) {
+    printf("Version: %s\n", version);
+    if (useRegex(version) == 0) {
+        // printf("Valid\n");
+        return 1;
+    } else {
+        // printf("Invalid, regex returned: %d\n", useRegex(version));
+        return 0;
+    }
+}
+
+// function to check if input file given is a directory
+int is_directory(int fd) {
+    struct stat buf;
+    if (fstat(fd, &buf) != 0) {
+        return -1;
+    }
+    if (S_ISDIR(buf.st_mode)) {
+        return 1;
+    }
+    return 0;
+}
+
+
 int main(int argc, char *argv[]) {
     if (argc != 2) {
         fprintf(stderr, "Usage: %s <port>\n", argv[0]);
@@ -73,6 +159,8 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    
+
     // Main server loop
     while (1) {
         // Accept a new connection
@@ -82,9 +170,12 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
+        printf("Accepted connection: %d\n", client_socket);
+
         // Process the connection
         char request_buffer[MAX_BUFFER_SIZE];
         int bytes_read = read_n_bytes(client_socket, request_buffer, MAX_BUFFER_SIZE);
+
 
         printf("I read %d bytes\n", bytes_read);
         // if (bytes_read == -1) {
@@ -118,44 +209,78 @@ int main(int argc, char *argv[]) {
         // write_ptr += add;
         // printf("add: %d", add);
 
+        
+        
+
         // Process the parsed information
         printf("Method: %s, URI: %s, Version: %s, Headers: %s, Content: %s\n", method, uri, version, headers, content);
-        printf("content length: %zu\n", get_content_length(headers));
+        // printf("content length: %zu\n", get_content_length(headers));
 
-        
+        // get_content_length(headers);
+
+        if (validate_version(version) != 1) {
+            send_response(client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
+            close(client_socket);
+            continue;
+        } else if (strcmp(version, "HTTP/1.1") != 0) {
+            send_response(client_socket, 505, "Version Not Supported", "Version Not Supported\n", strlen("Version Not Supported\n"));
+            close(client_socket);
+            continue;
+        }
 
         // Your code for handling the HTTP request goes here
         if (strcmp(method, "GET") == 0) {
             // Handle GET request
             printf("Handling GET request\n");
 
+            // if (validate_version(version) != 1) {
+            //     send_response(client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
+            // } else if (strcmp(version, "HTTP/1.1") != 0) {
+            //     send_response(client_socket, 505, "Version Not Supported", "Version Not Supported\n", strlen("Version Not Supported\n"));
+            // }
             // Check if the URI is valid
             if (validate_uri(uri)) {
                 // Your code for handling a valid GET request goes here
 
                 // Open the file for reading
                 int file_fd = open(uri + 1, O_RDONLY);
+
                 if (file_fd != -1) {
+
+                    // check if directory
+                    if (is_directory(file_fd) != 0) {
+                        send_response(client_socket, 403, "Forbidden", "Forbidden\n", strlen("Forbidden\n"));
+                    }
                     // File exists, read its content
                     off_t file_size = lseek(file_fd, 0, SEEK_END);
                     lseek(file_fd, 0, SEEK_SET);
 
                     // Allocate a buffer for the file content
                     char *file_content = malloc(file_size + 1);
+
+                    printf("file size: %ld\n", file_size);
+
                     if (file_content) {
                         // Read the file content
-                        ssize_t bytes_read = read(file_fd, file_content, file_size);
+                        ssize_t bytes_read = read_n_bytes(file_fd, file_content, file_size);
+                        printf("number of bytes read: %zd\n", bytes_read);
                         if (bytes_read != -1) {
                             file_content[bytes_read] = '\0';  // Null-terminate the content
 
                             // Close the file
                             close(file_fd);
 
+                            printf("finished closing file\n");
+
                             // Send the HTTP response
-                            send_response(client_socket, 200, "OK", file_content, strlen(file_content));
+                            send_response(client_socket, 200, "OK", file_content, file_size);
+
+                            printf("sent response\n");
 
                             // Free the allocated memory
                             free(file_content);
+
+                            printf("freed file content\n");
                         } else {
                             // Error reading file
                             close(file_fd);
@@ -175,7 +300,6 @@ int main(int argc, char *argv[]) {
                 } else {
                     // File does not exist
                     fprintf(stderr, "File not found: %s\n", uri + 1);  // Skip the leading '/'
-
                     // Send a not found response
                     send_response(client_socket, 404, "Not Found", "Not Found\n", 10);
                 }
@@ -185,9 +309,6 @@ int main(int argc, char *argv[]) {
                 fprintf(stderr, "Invalid URI: %s\n", uri);
                 // Your code for sending an appropriate response goes here
             }
-
-            
-
             // Your code for handling a GET request goes here
         } else if (strcmp(method, "PUT") == 0) {
             // Find the position where the content starts in the buffer
@@ -234,18 +355,20 @@ int main(int argc, char *argv[]) {
                     // Send an internal server error response
                     send_response(client_socket, 500, "Internal Server Error", "Internal Server Error\n", 21);
                 }
-        } else {
-            // Error opening or creating the file
-            perror("Error opening/creating file");
+            } else {
+                // Error opening or creating the file
+                perror("Error opening/creating file");
 
-            // Send an internal server error response
-            send_response(client_socket, 500, "Internal Server Error", "Internal Server Error\n", 21);
-        }
+                // Send an internal server error response
+                send_response(client_socket, 500, "Internal Server Error", "Internal Server Error\n", 21);
+            }
         
         } else {
             // Unsupported method
             fprintf(stderr, "Unsupported method: %s\n", method);
             // Your code for sending an appropriate response goes here
+            send_response(client_socket, 501, "Not Implemented", "Not Implemented\n", strlen("Not Implemented\n"));
+            
         }
 
 
