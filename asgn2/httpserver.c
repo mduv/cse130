@@ -15,25 +15,6 @@
 
 
 
-// write whatever is read into buffer
-int write_buffer(int fd, char *buffer, int bytes) {
-    int byteToWrite = bytes;
-    int byteWritten = 0;
-    int totalBytesWritten = 0;
-
-    while ((byteWritten = write(fd, buffer + totalBytesWritten, byteToWrite)) != byteToWrite) {
-        if (byteWritten == -1) {
-            return (-1);
-        }
-        totalBytesWritten += byteWritten;
-        byteToWrite = byteToWrite - byteWritten;
-
-        fprintf(stderr, "write_buffer: byteswrite %d\n", byteWritten);
-    }
-    return (bytes);
-}
-
-
 void send_response(int socket, int status_code, char *status_text, char *content, size_t content_length) {
     // Assuming a simple HTTP/1.1 response format
     char response[100];
@@ -51,36 +32,54 @@ void send_response(int socket, int status_code, char *status_text, char *content
 
 }
 
-size_t get_content_length(const char *headers) {
-    const char *content_length_str = strstr(headers, "Content-Length: ");
-    if (content_length_str) {
-        // Skip the "Content-Length: " prefix
-        content_length_str += strlen("Content-Length: ");
-        return atoi(content_length_str);
-    }
-    return 0;  // Default to 0 if not found or parsing fails
-}
+// size_t get_content_length(const char *headers) {
+//     const char *content_length_str = strstr(headers, "Content-Length: ");
+//     if (content_length_str) {
+//         // Skip the "Content-Length: " prefix
+//         content_length_str += strlen("Content-Length: ");
+//         return atoi(content_length_str);
+//     }
+//     return 0;  // Default to 0 if not found or parsing fails
+// }
 
 // Function to validate the URI
 int validate_uri(const char *uri) {
-    // Check if URI starts with '/'
-    if (uri[0] != '/')
-        return 0;
-
+    
     // Check if URI length is between 2 and 64 characters
     size_t uri_length = strlen(uri);
     if (uri_length < 2 || uri_length > 64)
-        return 0;
+        return 1;
 
     // Check if URI contains only valid characters [a-zA-Z0-9.-]
-    for (size_t i = 1; i < uri_length; ++i) {
-        char ch = uri[i];
-        if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '.' || ch == '-'))
-            return 0;
+    regex_t compiledRegex;
+    int reti;
+    int actualReturnValue = -1;
+    // char messageBuffer[100];
+
+    /* Compile regular expression */
+    reti = regcomp(&compiledRegex, "/[a-zA-Z0-9.-]*$", REG_EXTENDED | REG_ICASE);
+    if (reti) {
+        fprintf(stderr, "Could not compile regex\n");
+        return -2;
     }
 
-    // If all checks pass, the URI is valid
-    return 1;
+    /* Execute compiled regular expression */
+    reti = regexec(&compiledRegex, uri, 0, NULL, 0);
+    if (!reti) {
+        // match
+        actualReturnValue = 0;
+    } else if (reti == REG_NOMATCH) {
+        // puts("No match");
+        actualReturnValue = 1;
+    } else {
+        // regerror(reti, &compiledRegex, messageBuffer, sizeof(messageBuffer));
+        // fprintf(stderr, "Regex match failed: %s\n", messageBuffer);
+        actualReturnValue = -3;
+    }
+
+    /* Free memory allocated to the pattern buffer by regcomp() */
+    regfree(&compiledRegex);
+    return actualReturnValue;
 }
 
 
@@ -139,6 +138,38 @@ int is_directory(int fd) {
     return 0;
 }
 
+int is_end_of_token(char* request_buffer) {
+    int buf_len = strlen(request_buffer);
+    if (buf_len >= 2) {
+        if (strcmp(&request_buffer[buf_len - 2], "\r\n") == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+char* read_token(int client_socket, char* request_buffer) {
+    int bytesRead;
+    char *substring = malloc(MAX_BUFFER_SIZE);
+    char token[MAX_BUFFER_SIZE] = {0};
+
+    printf("read_token\n");
+
+    while ((bytesRead = read(client_socket, request_buffer, 1)) >= 0) {
+        printf("bytesRead: %d\n", bytesRead);
+        strcat(token, request_buffer);
+        if (is_end_of_token(token) == 1) {
+            memcpy(substring, token, strlen(token) - 2);
+            // Null-terminate the substring
+            substring[strlen(substring)] = '\0';
+            printf("substring: %s\n", substring );
+
+            return substring;
+        }
+    }
+    return NULL;
+}
+
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
@@ -159,8 +190,6 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    
-
     // Main server loop
     while (1) {
         // Accept a new connection
@@ -170,77 +199,58 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
-        printf("Accepted connection: %d\n", client_socket);
+        // printf("Accepted connection: %d\n", client_socket);
+
 
         // Process the connection
         char request_buffer[MAX_BUFFER_SIZE];
-        int bytes_read = read_n_bytes(client_socket, request_buffer, MAX_BUFFER_SIZE);
+        // read token
+        char* request_line = read_token(client_socket, request_buffer);
+        // printf("request line: %s\n", request_line);
 
-
-        printf("I read %d bytes\n", bytes_read);
-        // if (bytes_read == -1) {
-        //     fprintf(stderr, "Error reading from socket\n");
-        // }
-        printf("This is what I read: %s\n", request_buffer);
-        printf("Errno from read_sock_raw: %d\n", errno);
-
-        // if (bytes_read <= 0) {
-        //     fprintf(stderr, "Error reading from client socket\n");
-        //     continue;
-        // }
-
-        // Null-terminate the buffer to treat it as a string
-        request_buffer[bytes_read] = '\0';
-
-        // Parse the request and handle it
         // Parse the request line
-        char *method, *uri, *version, *headers, *content;
-        int parsed = sscanf(request_buffer, "%m[^ ] %m[^ ] %m[^\r\n]\r\n%m[^\r\n]\r\n\r\n%m[^\r\n]", &method, &uri, &version, &headers, &content);
+        char method[MAX_BUFFER_SIZE];
+        char uri[MAX_BUFFER_SIZE];
+        char version[MAX_BUFFER_SIZE];
+        int parsed = sscanf(request_line, "%s %s %s", method, uri, version);
 
-        if (parsed > 5) {
-            // Invalid request format
-            fprintf(stderr, "Invalid request format\n");
-            // Your code for sending an appropriate response goes here
+
+        printf("method: %s, uri: %s, version: %s, parsed: %d\n", method, uri, version, parsed);
+        request_line = read_token(client_socket, request_buffer);
+        if (!request_line) {
             continue;
         }
+        printf("request_line: %s len: %lu\n", request_line, strlen(request_line));
 
-        // char *write_ptr = request_buffer;
-        // int add = strlen(uri) + strlen(method) + strlen(version) + 1 + 1 + 2 + strlen(headers) + 4;
-        // write_ptr += add;
-        // printf("add: %d", add);
+        // Read headers
+        if (request_line)
+        printf("request_line: %s len: %lu\n", request_line, strlen(request_line));
 
-        
-        
-
-        // Process the parsed information
-        printf("Method: %s, URI: %s, Version: %s, Headers: %s, Content: %s\n", method, uri, version, headers, content);
-        // printf("content length: %zu\n", get_content_length(headers));
-
-        // get_content_length(headers);
-
+        // validate version
         if (validate_version(version) != 1) {
+            // printf("Invalid version\n");
             send_response(client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
             close(client_socket);
+            printf("closed connection\n");
             continue;
         } else if (strcmp(version, "HTTP/1.1") != 0) {
+            // printf("unsupported version\n");
             send_response(client_socket, 505, "Version Not Supported", "Version Not Supported\n", strlen("Version Not Supported\n"));
+            sleep(2);
             close(client_socket);
             continue;
         }
 
-        // Your code for handling the HTTP request goes here
-        if (strcmp(method, "GET") == 0) {
-            // Handle GET request
-            printf("Handling GET request\n");
+        // validate uri
+        if (validate_uri(uri) != 0) {
+            send_response(client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
+            sleep(2);
+            close(client_socket);
+            continue;
+        }
 
-            // if (validate_version(version) != 1) {
-            //     send_response(client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
-            // } else if (strcmp(version, "HTTP/1.1") != 0) {
-            //     send_response(client_socket, 505, "Version Not Supported", "Version Not Supported\n", strlen("Version Not Supported\n"));
-            // }
-            // Check if the URI is valid
-            if (validate_uri(uri)) {
-                // Your code for handling a valid GET request goes here
+        if (strcmp(method, "GET") == 0) {
+            // Your code for handling a valid GET request goes here
 
                 // Open the file for reading
                 int file_fd = open(uri + 1, O_RDONLY);
@@ -251,6 +261,7 @@ int main(int argc, char *argv[]) {
                     if (is_directory(file_fd) != 0) {
                         send_response(client_socket, 403, "Forbidden", "Forbidden\n", strlen("Forbidden\n"));
                     }
+
                     // File exists, read its content
                     off_t file_size = lseek(file_fd, 0, SEEK_END);
                     lseek(file_fd, 0, SEEK_SET);
@@ -258,29 +269,19 @@ int main(int argc, char *argv[]) {
                     // Allocate a buffer for the file content
                     char *file_content = malloc(file_size + 1);
 
-                    printf("file size: %ld\n", file_size);
-
                     if (file_content) {
                         // Read the file content
                         ssize_t bytes_read = read_n_bytes(file_fd, file_content, file_size);
-                        printf("number of bytes read: %zd\n", bytes_read);
+                        // printf("number of bytes read: %zd\n", bytes_read);
                         if (bytes_read != -1) {
-                            file_content[bytes_read] = '\0';  // Null-terminate the content
-
+                            // Null-terminate the content
+                            file_content[bytes_read] = '\0';  
                             // Close the file
                             close(file_fd);
-
-                            printf("finished closing file\n");
-
                             // Send the HTTP response
                             send_response(client_socket, 200, "OK", file_content, file_size);
-
-                            printf("sent response\n");
-
                             // Free the allocated memory
                             free(file_content);
-
-                            printf("freed file content\n");
                         } else {
                             // Error reading file
                             close(file_fd);
@@ -292,95 +293,27 @@ int main(int argc, char *argv[]) {
                     } else {
                         // Memory allocation failed
                         close(file_fd);
-                        fprintf(stderr, "Memory allocation failed\n");
-
                         // Send an internal server error response
                         send_response(client_socket, 500, "Internal Server Error", "Internal Server Error\n", 21);
                     }
                 } else {
                     // File does not exist
-                    fprintf(stderr, "File not found: %s\n", uri + 1);  // Skip the leading '/'
                     // Send a not found response
+                    close(file_fd);
                     send_response(client_socket, 404, "Not Found", "Not Found\n", 10);
                 }
-                printf("Valid GET request\n");
-            } else {
-                // Invalid URI
-                fprintf(stderr, "Invalid URI: %s\n", uri);
-                // Your code for sending an appropriate response goes here
-            }
-            // Your code for handling a GET request goes here
         } else if (strcmp(method, "PUT") == 0) {
-            // Find the position where the content starts in the buffer
-            char *content_start = strstr(request_buffer, "\r\n\r\n");
-            if (content_start != NULL) {
-                // Move the pointer to the start of the content
-                content_start += 4;  // Skip "\r\n\r\n"
-
-                // Check for Content-Length header
-                size_t content_length = get_content_length(headers);
-                if (content_length == 0) {
-                    // Content-Length header not found or invalid
-                    send_response(client_socket, 400, "Bad Request", "Content-Length header missing or invalid\n", 40);
-                    continue;
-                }
-
-                // Open or create the file for writing
-                int file_descriptor = open(uri + 1, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);  // Skip the leading '/'
-                if (file_descriptor != -1) {
-                    // Write the content to the file starting from the content_start position
-                    size_t bytes_written = write(file_descriptor, content_start, content_length);
-
-                    if (bytes_written == content_length) {
-                        // Successful write
-                        // Close the file
-                        close(file_descriptor);
-
-                        // Send the HTTP response
-                        send_response(client_socket, 200, "OK", "OK\n", 3);
-                    } else {
-                        // Error writing to the file
-                        perror("Error writing to file");
-
-                        // Close the file
-                        close(file_descriptor);
-
-                        // Send an internal server error response
-                        send_response(client_socket, 500, "Internal Server Error", "Internal Server Error\n", 21);
-                    }
-                } else {
-                    // Error opening or creating the file
-                    perror("Error opening/creating file");
-
-                    // Send an internal server error response
-                    send_response(client_socket, 500, "Internal Server Error", "Internal Server Error\n", 21);
-                }
-            } else {
-                // Error opening or creating the file
-                perror("Error opening/creating file");
-
-                // Send an internal server error response
-                send_response(client_socket, 500, "Internal Server Error", "Internal Server Error\n", 21);
-            }
-        
+            printf("tyring header\n");
+            char* header = read_token(client_socket, request_buffer);
+            printf("header: %s\n", header);
+            exit(1);
         } else {
             // Unsupported method
-            fprintf(stderr, "Unsupported method: %s\n", method);
+            // fprintf(stderr, "Unsupported method: %s\n", method);
             // Your code for sending an appropriate response goes here
             send_response(client_socket, 501, "Not Implemented", "Not Implemented\n", strlen("Not Implemented\n"));
-            
+            exit(1);
         }
-
-
-        // Free allocated memory
-        free(method);
-        free(uri);
-        free(version);
-
-
-        // Your code for processing the connection goes here
-
-        // Close the connection
         close(client_socket);
     }
 
