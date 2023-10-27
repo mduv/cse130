@@ -8,3 +8,6 @@ httpserver: httpserver.c asgn2_helper_funcs.a
 
 clean:
 	rm -f httpserver *.o
+
+format:
+	clang-format -i -style=file *.[ch]
