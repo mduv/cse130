@@ -10,12 +10,12 @@
 
 #include "asgn2_helper_funcs.h"
 #define MAX_BUFFER_SIZE 2048
-#define MAX_HEADERS 5
+#define MAX_HEADERS     5
 
 #include <regex.h>
 
-#define MAX_MATCHES 10  // Maximum number of matches
-#define MAX_HEADER_LEN 1024  // Maximum length of the header string
+#define MAX_MATCHES    10 // Maximum number of matches
+#define MAX_HEADER_LEN 1024 // Maximum length of the header string
 
 typedef struct {
     char *key;
@@ -26,7 +26,7 @@ HeaderField parse_http_header(const char *header_text) {
     regex_t regex;
     regmatch_t matches[MAX_MATCHES];
     int status;
-    HeaderField header = {NULL, NULL};
+    HeaderField header = { NULL, NULL };
 
     // Define the regular expression pattern
     const char *pattern = "([A-Za-z-]+): (.+)";
@@ -45,8 +45,8 @@ HeaderField parse_http_header(const char *header_text) {
         int value_len = matches[2].rm_eo - matches[2].rm_so;
 
         // Allocate memory for key and value
-        header.key = (char *)malloc(key_len + 1);
-        header.value = (char *)malloc(value_len + 1);
+        header.key = (char *) malloc(key_len + 1);
+        header.value = (char *) malloc(value_len + 1);
 
         // Copy key and value into the allocated memory
         snprintf(header.key, key_len + 1, "%s", header_text + matches[1].rm_so);
@@ -111,7 +111,6 @@ int validate_method(const char *method) {
     return actualReturnValue;
 }
 
-
 // Function to validate the URI
 int validate_uri(const char *uri) {
     // Check if URI length is between 2 and 64 characters
@@ -147,7 +146,6 @@ int validate_uri(const char *uri) {
     regfree(&compiledRegex);
     return actualReturnValue;
 }
-
 
 int validate_version(char *textToCheck) {
     regex_t compiledRegex;
@@ -201,26 +199,22 @@ int is_end_of_token(char *token) {
     return 0;
 }
 
-char *read_body(int client_socket, int content_len)
-{
-    char *body = calloc(content_len, sizeof(char));
+char *read_body(int client_socket, int content_len) {
+    char *body = calloc(content_len + 1, sizeof(char));
 
     int bytes_read = read_n_bytes(client_socket, body, content_len);
     if (bytes_read != -1) {
-       body[bytes_read] = '\0';
-       return body;
+        body[bytes_read] = '\0';
+        return body;
     } else {
-       free(body);
-       return NULL;
+        free(body);
+        return NULL;
     }
 }
 
-int write_body(int file_fd, char *body, int content_len)
-{
+int write_body(int file_fd, char *body, int content_len) {
     return write_n_bytes(file_fd, body, content_len);
 }
-
-
 
 char *read_token(int client_socket) {
     int bytesRead;
@@ -308,9 +302,9 @@ int main(int argc, char *argv[]) {
         printf("request line: %s\n", request_line);
 
         // Parse the request line
-        char method[MAX_BUFFER_SIZE] = {0};
-        char uri[MAX_BUFFER_SIZE] = {0};
-        char version[MAX_BUFFER_SIZE] = {0};
+        char method[MAX_BUFFER_SIZE] = { 0 };
+        char uri[MAX_BUFFER_SIZE] = { 0 };
+        char version[MAX_BUFFER_SIZE] = { 0 };
         int parsed = sscanf(request_line, "%s %s %s", method, uri, version);
         if (parsed < 2) {
             printf("Invalid Request Line\n");
@@ -367,7 +361,7 @@ int main(int argc, char *argv[]) {
                 client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
             close(client_socket);
             continue;
-        } else if ((strcmp(method, "PUT") != 0) && (strcmp(method, "GET") != 0)){
+        } else if ((strcmp(method, "PUT") != 0) && (strcmp(method, "GET") != 0)) {
             send_response(client_socket, 501, "Not Implemented", "Not Implemented\n",
                 strlen("Not Implemented\n"));
             close(client_socket);
@@ -445,7 +439,7 @@ int main(int argc, char *argv[]) {
             }
             printf("Content length: %d\n", content_len);
 
-            if (content_len <= 0 ) {
+            if (content_len <= 0) {
                 printf("Content Len <= 0\n");
                 send_response(
                     client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
@@ -464,24 +458,13 @@ int main(int argc, char *argv[]) {
             if (file_fd == -1 && errno == ENOENT) {
                 // file does not exists, create one
                 new_file = 1;
+                printf("file %s was created\n", uri + 1);
                 close(file_fd);
                 flags |= O_CREAT;
                 file_fd = open(uri + 1, flags, 0644);
+            } else {
+                printf("--------file %s is not new %d-----\n", uri + 1, errno);
             }
-
-            if (file_fd != -1) {
-                // File opened 
-
-                // Check if the file was created or overwritten
-                if (flags & O_CREAT) {
-                    if (flags & O_EXCL) {
-                        printf("File created (O_EXCL used)\n");
-                    } else {
-                        printf("File created or overwritten\n");
-                    }
-                }
-            }
-
 
             if (file_fd != -1) {
                 // check if directory
@@ -498,17 +481,18 @@ int main(int argc, char *argv[]) {
                         // Close the file
                         close(file_fd);
                         // Send the HTTP response
-                        
-                        send_response(client_socket, new_file ? 201 : 200, "OK", "OK\n", strlen("OK\n"));
 
+                        if (new_file == 1) {
+                            send_response(
+                                client_socket, 201, "Created", "Created\n", strlen("Created\n"));
+                        } else {
+                            send_response(client_socket, 200, "Ok", "Ok\n", strlen("Ok\n"));
+                        }
                     }
                 }
             }
-
-            
-
         }
-    
+
         close(client_socket);
     }
 
