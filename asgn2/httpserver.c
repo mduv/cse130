@@ -10,6 +10,7 @@
 
 #include "asgn2_helper_funcs.h"
 #define MAX_BUFFER_SIZE 2048
+#define MAX_HEADERS 5
 
 #include <regex.h>
 
@@ -29,15 +30,42 @@ void send_response(
     write_n_bytes(socket, content, content_length);
 }
 
-// size_t get_content_length(const char *headers) {
-// const char *content_length_str = strstr(headers, "Content-Length: ");
-// if (content_length_str) {
-// // Skip the "Content-Length: " prefix
-// content_length_str += strlen("Content-Length: ");
-// return atoi(content_length_str);
-// }
-// return 0; // Default to 0 if not found or parsing fails
-// }
+// Function to validate the method
+int validate_method(const char *method) {
+    // Check if method length is at most than 8 characters
+    size_t method_length = strlen(method);
+    if (method_length > 8)
+        return 1;
+
+    // Check if method contains only valid characters [a-zA-Z]
+    regex_t compiledRegex;
+    int reti;
+    int actualReturnValue = -1;
+
+    /* Compile regular expression */
+    reti = regcomp(&compiledRegex, "[a-zA-Z]*$", REG_EXTENDED | REG_ICASE);
+    if (reti) {
+        fprintf(stderr, "Could not compile regex\n");
+        return -2;
+    }
+
+    /* Execute compiled regular expression */
+    reti = regexec(&compiledRegex, method, 0, NULL, 0);
+    if (!reti) {
+        // match
+        actualReturnValue = 0;
+    } else if (reti == REG_NOMATCH) {
+        // No match
+        actualReturnValue = 1;
+    } else {
+        actualReturnValue = -3;
+    }
+
+    /* Free memory allocated to the pattern buffer by regcomp() */
+    regfree(&compiledRegex);
+    return actualReturnValue;
+}
+
 
 // Function to validate the URI
 int validate_uri(const char *uri) {
@@ -50,10 +78,9 @@ int validate_uri(const char *uri) {
     regex_t compiledRegex;
     int reti;
     int actualReturnValue = -1;
-    // char messageBuffer[100];
 
     /* Compile regular expression */
-    reti = regcomp(&compiledRegex, "/[a-zA-Z0-9.-]*$", REG_EXTENDED | REG_ICASE);
+    reti = regcomp(&compiledRegex, "/[a-zA-Z0-9.-_]*$", REG_EXTENDED | REG_ICASE);
     if (reti) {
         fprintf(stderr, "Could not compile regex\n");
         return -2;
@@ -65,11 +92,9 @@ int validate_uri(const char *uri) {
         // match
         actualReturnValue = 0;
     } else if (reti == REG_NOMATCH) {
-        // puts("No match");
+        // No match
         actualReturnValue = 1;
     } else {
-        // regerror(reti, &compiledRegex, messageBuffer, sizeof(messageBuffer));
-        // fprintf(stderr, "Regex match failed: %s\n", messageBuffer);
         actualReturnValue = -3;
     }
 
@@ -78,11 +103,10 @@ int validate_uri(const char *uri) {
     return actualReturnValue;
 }
 
-int useRegex(char *textToCheck) {
+int validate_version(char *textToCheck) {
     regex_t compiledRegex;
     int reti;
     int actualReturnValue = -1;
-    // char messageBuffer[100];
 
     /* Compile regular expression */
     reti = regcomp(&compiledRegex, "^HTTP/[0-9]\\.[0-9]$", REG_EXTENDED | REG_ICASE);
@@ -97,11 +121,9 @@ int useRegex(char *textToCheck) {
         // match
         actualReturnValue = 0;
     } else if (reti == REG_NOMATCH) {
-        // puts("No match");
+        // No match
         actualReturnValue = 1;
     } else {
-        // regerror(reti, &compiledRegex, messageBuffer, sizeof(messageBuffer));
-        // fprintf(stderr, "Regex match failed: %s\n", messageBuffer);
         actualReturnValue = -3;
     }
 
@@ -110,23 +132,13 @@ int useRegex(char *textToCheck) {
     return actualReturnValue;
 }
 
-int validate_version(char *version) {
-    printf("Version: %s\n", version);
-    if (useRegex(version) == 0) {
-        // printf("Valid\n");
-        return 1;
-    } else {
-        // printf("Invalid, regex returned: %d\n", useRegex(version));
-        return 0;
-    }
-}
-
 // function to check if input file given is a directory
 int is_directory(int fd) {
     struct stat buf;
     if (fstat(fd, &buf) != 0) {
         return -1;
     }
+
     if (S_ISDIR(buf.st_mode)) {
         return 1;
     }
@@ -145,24 +157,18 @@ int is_end_of_token(char *token) {
 
 char *read_token(int client_socket) {
     int bytesRead;
-    char *substring = malloc(MAX_BUFFER_SIZE);
-    char token[MAX_BUFFER_SIZE] = "";
-    char request_buffer[10] = "";
+    char *token = calloc(MAX_BUFFER_SIZE, sizeof(char));
+    char request_buffer = '\0';
 
-    printf("read_token: token:%s tokenlen: %lu\n", token, strlen(token));
-
-    int i = 0;
-    while ((bytesRead = read(client_socket, request_buffer, 1)) >= 0) {
-        strncat(token, request_buffer, 1);
-        i++;
-        printf("token: %s len:%lu i:%d\n", token, strlen(token), i);
+    while ((bytesRead = read(client_socket, &request_buffer, 1)) >= 0) {
+        strncat(token, &request_buffer, 1);
 
         if (is_end_of_token(token) == 1) {
-            memcpy(substring, token, strlen(token) - 2);
+            // memcpy(substring, token, strlen(token) - 2);
             // Null-terminate the substring
-            substring[strlen(token) - 2] = '\0';
-            printf("substring: %s len:%lu i:%d\n", substring, strlen(substring), i);
-            return substring;
+            token[strlen(token) - 2] = '\0';
+            printf("token: %s len:%lu\n", token, strlen(token));
+            return token;
         }
     }
 
@@ -180,8 +186,8 @@ int read_headers(int client_socket, char *headers[]) {
             // Malformed headers
             return -1;
         }
-        printf("header: %s\n", header);
-        if (strlen(header) > 0) {
+        printf("header: %s, header_count:%d\n", header, header_count);
+        if ((strlen(header) > 0) && (header_count < MAX_HEADERS)) {
             headers[header_count++] = header;
         } else {
             end_of_headers = true;
@@ -218,7 +224,7 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
-        // printf("Accepted connection: %d\n", client_socket);
+        printf("Accepted connection: %d\n", client_socket);
 
         // Process the connection
 
@@ -226,53 +232,77 @@ int main(int argc, char *argv[]) {
         char *request_line = read_token(client_socket);
         if (!request_line) {
             // Invalid request
+            printf("Invalid request line\n");
             send_response(
                 client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
             close(client_socket);
             continue;
         }
-        // printf("request line: %s\n", request_line);
+        printf("request line: %s\n", request_line);
 
         // Parse the request line
-        char method[MAX_BUFFER_SIZE];
-        char uri[MAX_BUFFER_SIZE];
-        char version[MAX_BUFFER_SIZE];
+        char method[MAX_BUFFER_SIZE] = {0};
+        char uri[MAX_BUFFER_SIZE] = {0};
+        char version[MAX_BUFFER_SIZE] = {0};
         int parsed = sscanf(request_line, "%s %s %s", method, uri, version);
-        printf("method: %s, uri: %s, version: %s, parsed: %d\n", method, uri, version, parsed);
-
-        // Read headers
-        char *headers[5];
-        int header_count = read_headers(client_socket, headers);
-        if (header_count < 0) {
+        if (parsed < 2) {
+            printf("Invalid Request Line\n");
             // Invalid request
             send_response(
                 client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
             close(client_socket);
             continue;
         }
+        printf("method: %s, uri: %s, version: %s, parsed: %d\n", method, uri, version, parsed);
 
-        // validate version
-        if (validate_version(version) != 1) {
-            // printf("Invalid version\n");
+        // Read headers
+        char *headers[MAX_HEADERS];
+        int header_count = read_headers(client_socket, headers);
+        if (header_count < 0) {
+            printf("Missing headers\n");
+            // Invalid request
             send_response(
                 client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
             close(client_socket);
-            printf("closed connection\n");
+            continue;
+        }
+        for (int i = 0; i < header_count; i++) {
+            printf("headers[%d]: %s\n", i, headers[i]);
+        }
+
+        // validate version
+        if (validate_version(version) != 0) {
+            printf("Invalid version\n");
+            send_response(
+                client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
+            close(client_socket);
             continue;
         } else if (strcmp(version, "HTTP/1.1") != 0) {
-            // printf("unsupported version\n");
             send_response(client_socket, 505, "Version Not Supported", "Version Not Supported\n",
                 strlen("Version Not Supported\n"));
-            sleep(2);
             close(client_socket);
             continue;
         }
 
         // validate uri
         if (validate_uri(uri) != 0) {
+            printf("Invalid URI\n");
             send_response(
                 client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
-            sleep(2);
+            close(client_socket);
+            continue;
+        }
+
+        // validate method
+        if (validate_method(method) != 0) {
+            printf("Invalid method\n");
+            send_response(
+                client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
+            close(client_socket);
+            continue;
+        } else if ((strcmp(method, "PUT") != 0) && (strcmp(method, "GET") != 0)){
+            send_response(client_socket, 501, "Not Implemented", "Not Implemented\n",
+                strlen("Not Implemented\n"));
             close(client_socket);
             continue;
         }
@@ -287,6 +317,7 @@ int main(int argc, char *argv[]) {
 
                 // check if directory
                 if (is_directory(file_fd) != 0) {
+                    printf("Is a directory\n");
                     send_response(
                         client_socket, 403, "Forbidden", "Forbidden\n", strlen("Forbidden\n"));
                 }
@@ -334,18 +365,20 @@ int main(int argc, char *argv[]) {
                 send_response(client_socket, 404, "Not Found", "Not Found\n", 10);
             }
         } else if (strcmp(method, "PUT") == 0) {
-            printf("tyring header\n");
-            char *header = read_token(client_socket);
-            printf("header: %s\n", header);
-            exit(1);
-        } else {
-            // Unsupported method
-            // fprintf(stderr, "Unsupported method: %s\n", method);
-            // Your code for sending an appropriate response goes here
-            send_response(client_socket, 501, "Not Implemented", "Not Implemented\n",
-                strlen("Not Implemented\n"));
-            exit(1);
+
+            char key[MAX_BUFFER_SIZE] = {0};
+            char value[MAX_BUFFER_SIZE] = {0};
+            int content_len = 0;
+            for (int i = 0; i < header_count; i++) {
+                sscanf(headers[i], "%s: %s", key, value);
+                if (strcmp(key, "Content-Length") == 0) {
+                    content_len = atoi(value);
+                    break;
+                }
+            }
+            printf("Content length: %d\n", content_len);
         }
+    
         close(client_socket);
     }
 
