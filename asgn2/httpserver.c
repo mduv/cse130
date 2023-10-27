@@ -14,6 +14,51 @@
 
 #include <regex.h>
 
+#define MAX_MATCHES 10  // Maximum number of matches
+#define MAX_HEADER_LEN 1024  // Maximum length of the header string
+
+typedef struct {
+    char *key;
+    char *value;
+} HeaderField;
+
+HeaderField parse_http_header(const char *header_text) {
+    regex_t regex;
+    regmatch_t matches[MAX_MATCHES];
+    int status;
+    HeaderField header = {NULL, NULL};
+
+    // Define the regular expression pattern
+    const char *pattern = "([A-Za-z-]+): (.+)";
+
+    // Compile the regular expression
+    if (regcomp(&regex, pattern, REG_EXTENDED) != 0) {
+        perror("Regex compilation failed");
+        return header;
+    }
+
+    // Execute the regular expression
+    status = regexec(&regex, header_text, MAX_MATCHES, matches, 0);
+    if (status == 0) {
+        // Extract key and value using match positions
+        int key_len = matches[1].rm_eo - matches[1].rm_so;
+        int value_len = matches[2].rm_eo - matches[2].rm_so;
+
+        // Allocate memory for key and value
+        header.key = (char *)malloc(key_len + 1);
+        header.value = (char *)malloc(value_len + 1);
+
+        // Copy key and value into the allocated memory
+        snprintf(header.key, key_len + 1, "%s", header_text + matches[1].rm_so);
+        snprintf(header.value, value_len + 1, "%s", header_text + matches[2].rm_so);
+    }
+
+    // Free the regex resources
+    regfree(&regex);
+
+    return header;
+}
+
 void send_response(
     int socket, int status_code, char *status_text, char *content, size_t content_length) {
     // Assuming a simple HTTP/1.1 response format
@@ -103,6 +148,7 @@ int validate_uri(const char *uri) {
     return actualReturnValue;
 }
 
+
 int validate_version(char *textToCheck) {
     regex_t compiledRegex;
     int reti;
@@ -154,6 +200,27 @@ int is_end_of_token(char *token) {
     }
     return 0;
 }
+
+char *read_body(int client_socket, int content_len)
+{
+    char *body = calloc(content_len, sizeof(char));
+
+    int bytes_read = read_n_bytes(client_socket, body, content_len);
+    if (bytes_read != -1) {
+       body[bytes_read] = '\0';
+       return body;
+    } else {
+       free(body);
+       return NULL;
+    }
+}
+
+int write_body(int file_fd, char *body, int content_len)
+{
+    return write_n_bytes(file_fd, body, content_len);
+}
+
+
 
 char *read_token(int client_socket) {
     int bytesRead;
@@ -366,17 +433,80 @@ int main(int argc, char *argv[]) {
             }
         } else if (strcmp(method, "PUT") == 0) {
 
-            char key[MAX_BUFFER_SIZE] = {0};
-            char value[MAX_BUFFER_SIZE] = {0};
             int content_len = 0;
             for (int i = 0; i < header_count; i++) {
-                sscanf(headers[i], "%s: %s", key, value);
-                if (strcmp(key, "Content-Length") == 0) {
-                    content_len = atoi(value);
+                HeaderField header = parse_http_header(headers[i]);
+                // printf("header: key: %s, value: %s\n", header.key, header.value);
+
+                if (strcmp(header.key, "Content-Length") == 0) {
+                    content_len = atoi(header.value);
                     break;
                 }
             }
             printf("Content length: %d\n", content_len);
+
+            if (content_len <= 0 ) {
+                printf("Content Len <= 0\n");
+                send_response(
+                    client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
+                close(client_socket);
+            }
+
+            // Your code for handling a valid PUT request goes here
+            // Open the file for writing or create a new file
+            // int flags = O_WRONLY | O_CREAT | O_TRUNC;
+
+            int flags = O_WRONLY | O_TRUNC;
+            int new_file = 0;
+
+            int file_fd = open(uri + 1, flags, 0644);
+
+            if (file_fd == -1 && errno == ENOENT) {
+                // file does not exists, create one
+                new_file = 1;
+                close(file_fd);
+                flags |= O_CREAT;
+                file_fd = open(uri + 1, flags, 0644);
+            }
+
+            if (file_fd != -1) {
+                // File opened 
+
+                // Check if the file was created or overwritten
+                if (flags & O_CREAT) {
+                    if (flags & O_EXCL) {
+                        printf("File created (O_EXCL used)\n");
+                    } else {
+                        printf("File created or overwritten\n");
+                    }
+                }
+            }
+
+
+            if (file_fd != -1) {
+                // check if directory
+                if (is_directory(file_fd) != 0) {
+                    printf("Is a directory\n");
+                    send_response(
+                        client_socket, 403, "Forbidden", "Forbidden\n", strlen("Forbidden\n"));
+                } else {
+                    char *request_body = read_body(client_socket, content_len);
+                    if (request_body != NULL) {
+                        write_body(file_fd, request_body, content_len);
+                        // Free the allocated memory
+                        free(request_body);
+                        // Close the file
+                        close(file_fd);
+                        // Send the HTTP response
+                        
+                        send_response(client_socket, new_file ? 201 : 200, "OK", "OK\n", strlen("OK\n"));
+
+                    }
+                }
+            }
+
+            
+
         }
     
         close(client_socket);
