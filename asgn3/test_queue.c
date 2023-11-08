@@ -20,7 +20,7 @@ int main() {
         // printf("Pushed element %d to the queue\n", i);
 
         if (!queue_push(q, elem)) {
-            fprintf(stderr, "Failed to push element %d to the queue\n", i);
+            printf("Failed to push element %d to the queue\n", i);
         } else {
             printf("Pushed element %d to the queue\n", i);
         }
@@ -29,7 +29,7 @@ int main() {
     // In test_queue.c or wherever you consume elements
     for (int i = 1; i <= 7; ++i) {
         int *elem;
-        while (!queue_pop(q, (void**)&elem)) {
+        while (!queue_pop(q, (void **) &elem)) {
             // Queue is empty, wait for it to become not empty
             printf("Queue is empty. Waiting for it to become not empty...\n");
             // Add a delay or sleep here to avoid busy-waiting
@@ -37,7 +37,6 @@ int main() {
         printf("Popped element %d from the queue\n", *elem);
         free(elem);
     }
-
 
     // Clean up
     queue_delete(&q);

@@ -33,7 +33,7 @@ bool queue_push(queue_t *q, void *elem) {
     q->count += 1;
 
     pthread_cond_signal(&q->not_empty);
-    printf("Signaled not_empty in push\n");  // Add this line
+    printf("Signaled not_empty in push\n"); // Add this line
     pthread_mutex_unlock(&q->lock);
 
     return true;
@@ -53,7 +53,7 @@ bool queue_pop(queue_t *q, void **elem) {
     q->count -= 1;
 
     pthread_cond_signal(&q->not_full);
-    printf("Signaled not_full in pop\n");  // Add this line
+    printf("Signaled not_full in pop\n"); // Add this line
     pthread_mutex_unlock(&q->lock);
 
     return true;
@@ -76,7 +76,7 @@ queue_t *queue_new(int size) {
         return NULL;
     }
 
-    q->count = 0;  // Initialize count to 0
+    q->count = 0; // Initialize count to 0
     pthread_mutex_init(&q->lock, NULL);
     pthread_cond_init(&q->not_empty, NULL);
     pthread_cond_init(&q->not_full, NULL);
@@ -98,4 +98,3 @@ void queue_delete(queue_t **q) {
     free(*q);
     *q = NULL;
 }
-

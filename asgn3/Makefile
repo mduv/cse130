@@ -1,7 +1,7 @@
 CC=clang
 CFLAGS=-Wall -Wextra -Werror -pedantic -pthread -Wunused-parameter
 
-all: queue.o test_queue test_rwlock
+all: queue.o rwlock.o #test_queue test_rwlock
 #rwlock.o
 
 queue.o: queue.c
@@ -18,3 +18,6 @@ test_rwlock: test_rwlock.c rwlock.o
 
 clean:
 	rm -f *.o
+
+format:
+	clang-format -i -style=file *.[ch]

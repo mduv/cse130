@@ -47,9 +47,9 @@ void rwlock_delete(rwlock_t **rw) {
 void reader_lock(rwlock_t *rw) {
     pthread_mutex_lock(&rw->lock);
 
-    while ((rw->priority == READERS && rw->writers > 0) ||
-           (rw->priority == WRITERS && (rw->readers > 0 || rw->writers > 0)) ||
-           (rw->priority == N_WAY && rw->writers > 0 && rw->readers < rw->n)) {
+    while ((rw->priority == READERS && rw->writers > 0)
+           || (rw->priority == WRITERS && (rw->readers > 0 || rw->writers > 0))
+           || (rw->priority == N_WAY && rw->writers > 0 && rw->readers < rw->n)) {
         pthread_cond_wait(&rw->readers_cv, &rw->lock);
     }
 
@@ -73,14 +73,14 @@ void reader_unlock(rwlock_t *rw) {
 void writer_lock(rwlock_t *rw) {
     pthread_mutex_lock(&rw->lock);
 
-    while ((rw->priority == WRITERS && (rw->readers > 0 || rw->writers > 0)) ||
-           (rw->priority == N_WAY && (rw->readers > 0 || rw->writers > 0))) {
+    while ((rw->priority == WRITERS && (rw->readers > 0 || rw->writers > 0))
+           || (rw->priority == N_WAY && (rw->readers > 0 || rw->writers > 0))) {
         pthread_cond_wait(&rw->writers_cv, &rw->lock);
     }
 
     rw->writers++;
 
-    pthread_mutex_unlock(&rw->lock); 
+    pthread_mutex_unlock(&rw->lock);
 }
 
 void writer_unlock(rwlock_t *rw) {
