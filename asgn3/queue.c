@@ -22,23 +22,30 @@ struct queue {
 // In queue.c
 bool queue_push(queue_t *q, void *elem) {
 
-    // if (q == NULL || elem == NULL) {
-    //     return false;
-    // }
+    if (q == NULL) {
+        return false;
+    }
 
     pthread_mutex_lock(&q->lock);
+
 
     while (q->count == q->size) {
         // Queue is full, wait for it to become not full
         pthread_cond_wait(&q->not_full, &q->lock);
     }
 
+    // printf("Producer count before push: %d by thread: %lu\n", q->count, pthread_self());
     q->elements[q->rear] = elem;
     q->rear = (q->rear + 1) % q->size;
     q->count += 1;
+    // printf("Producer count after push: %d\n", q->count);
+
+    
 
     pthread_cond_signal(&q->not_empty);
     // printf("Signaled not_empty in push\n"); // Add this line
+
+    // printf("Producer thread pushed element %d\n", *((int*)elem));
     pthread_mutex_unlock(&q->lock);
 
     return true;
@@ -47,9 +54,9 @@ bool queue_push(queue_t *q, void *elem) {
 // In queue.c
 bool queue_pop(queue_t *q, void **elem) {
 
-    // if (q == NULL || elem == NULL) {
-    //     return false;
-    // }
+    if (q == NULL) {
+        return false;
+    }
 
     pthread_mutex_lock(&q->lock);
 
@@ -67,6 +74,11 @@ bool queue_pop(queue_t *q, void **elem) {
 
     pthread_cond_signal(&q->not_full);
     // printf("Signaled not_full in pop\n"); // Add this line
+    
+    // int *a = *(int **)elem;
+    // printf("#################################### Consumer thread popped element %d\n", *a);
+
+
     pthread_mutex_unlock(&q->lock);
     // printf("Pop thread released lock\n");
 
