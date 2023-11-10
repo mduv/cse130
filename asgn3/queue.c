@@ -21,6 +21,11 @@ struct queue {
 
 // In queue.c
 bool queue_push(queue_t *q, void *elem) {
+
+    // if (q == NULL || elem == NULL) {
+    //     return false;
+    // }
+
     pthread_mutex_lock(&q->lock);
 
     while (q->count == q->size) {
@@ -33,7 +38,7 @@ bool queue_push(queue_t *q, void *elem) {
     q->count += 1;
 
     pthread_cond_signal(&q->not_empty);
-    printf("Signaled not_empty in push\n"); // Add this line
+    // printf("Signaled not_empty in push\n"); // Add this line
     pthread_mutex_unlock(&q->lock);
 
     return true;
@@ -41,10 +46,18 @@ bool queue_push(queue_t *q, void *elem) {
 
 // In queue.c
 bool queue_pop(queue_t *q, void **elem) {
+
+    // if (q == NULL || elem == NULL) {
+    //     return false;
+    // }
+
     pthread_mutex_lock(&q->lock);
+
+    // printf("Pop thread acquired lock\n");
 
     while (q->count == 0) {
         // Queue is empty, wait for it to become not empty
+        // printf("Pop thread waiting for the queue to become not empty...\n");
         pthread_cond_wait(&q->not_empty, &q->lock);
     }
 
@@ -53,8 +66,9 @@ bool queue_pop(queue_t *q, void **elem) {
     q->count -= 1;
 
     pthread_cond_signal(&q->not_full);
-    printf("Signaled not_full in pop\n"); // Add this line
+    // printf("Signaled not_full in pop\n"); // Add this line
     pthread_mutex_unlock(&q->lock);
+    // printf("Pop thread released lock\n");
 
     return true;
 }
