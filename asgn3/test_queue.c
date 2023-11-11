@@ -1,247 +1,306 @@
 #include "queue.h"
-#include <assert.h>
-#include <stdlib.h>
+
+#include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <pthread.h>
 #include <unistd.h>
 
-// Global variables for testing
-int item_enqueued_order[10]; // To store the order in which items are enqueued
-int item_dequeued_order[10]; // To store the order in which items are dequeued
-int consumer_reads_valid_items = 1; // Flag to indicate if the consumer reads only valid items
-int all_items_produced; // Counter for all items produced
-int all_items_consumed; // Counter for all items consumed
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t c = PTHREAD_COND_INITIALIZER;
+int ops = 0;
+queue_t *q = NULL;
 
-// Function declarations
-void *producer_thread(void *arg);
-void *consumer_thread(void *arg);
-void test_thread_order();
-void test_validity();
-void test_completeness();
+void pop_check(queue_t *q, void *elem) {
+  bool rtn = queue_pop(q, elem);
+  if (!rtn) {
+    fprintf(stderr, "queue_pop failed!\n");
+    exit(2);
+  }
+}
 
-// Function declarations
-void test_queue_push_pop();
-void test_queue_empty_pop();
-void test_queue_full_push();
-void test_queue_sequence();
-void test_queue_push_null();
-void test_queue_pop_null();
-void test_queue_memory_leak();
+void push_check(queue_t *q, void *elem) {
+  bool rtn = queue_push(q, elem);
+  if (!rtn) {
+    fprintf(stderr, "queue_push failed!\n");
+    exit(3);
+  }
+}
 
 void *producer_thread(void *arg) {
-    queue_t *q = (queue_t *) arg;
+  // int id = pthread_self();
+  int x = *((int *)arg);
 
-    int id = pthread_self();
+  for (int i = 0; i < 150; ++i) {
+    int *elem = malloc(sizeof(int));
+    *elem = x + i;
+    push_check(q, elem);
+  }
 
-    for (int i = 0; i < 2; ++i) {
-        int *elem = malloc(sizeof(int));
-        *elem = id * 10 + i;
-
-        assert(queue_push(q, elem) == true);
-        printf("Producer thread %d pushed element %d\n", id, *elem);
-    }
-
-    return NULL;
+  return NULL;
 }
 
-void *consumer_thread(void *arg) {
-    queue_t *q = (queue_t *) arg;
+void *consumer_thread() {
 
-    int id = pthread_self();
+//   for (int i = 0; i < 5; ++i) {
+//     int *elem;
+//     pop_check(q, (void **)&elem);
+//     printf("###### Consumer thread popped element %d\n", *elem);
+//     free(elem);
+//   }
 
-    for (int i = 0; i < 2; ++i) {
-        int *elem;
-        assert(queue_pop(q, (void **) &elem) == true);
-        printf("Consumer thread %d popped element %d\n", id, *elem);
-        free(elem);
+//   return NULL;
+  // int id = pthread_self();
+  int last_base_100 = 0;
+  int last_base_10 = 0;
+
+  for (int i = 0; i < 300; ++i) {
+    int *elem;
+    pop_check(q, (void **)&elem);
+    // printf("###### Consumer thread popped element %d\n", *elem);
+
+    int value = *elem;
+    if (value >= 150) {
+      if (value < last_base_100) {
+        exit(2);
+      } else {
+        last_base_100 = value;
+      }
+    } else {
+      if (value < last_base_10) {
+        exit(3);
+      } else {
+        last_base_10 = value;
+      }
     }
 
-    return NULL;
+    free(elem);
+  }
+
+  return NULL;
 }
 
-void test_thread_safety() {
-    queue_t *q = queue_new(10);
 
-    pthread_t producer1, producer2, consumer1, consumer2;
+void test_q_is_null() {
+    // Test for q is NULL
+    printf("Running test_q_is_null...\n");
+    if (!queue_push(NULL, NULL)) {
+        printf("Test working\n");
+    } else {
+        printf("Test not working\n");
+    }
+}
 
-    pthread_create(&producer1, NULL, producer_thread, (void *) q);
-    pthread_create(&producer2, NULL, producer_thread, (void *) q);
-    pthread_create(&consumer1, NULL, consumer_thread, (void *) q);
-    pthread_create(&consumer2, NULL, consumer_thread, (void *) q);
+void test_push_and_pop_null_element() {
+    // Test for pushing a NULL element
+    q = queue_new(10);
 
-    pthread_join(producer1, NULL);
-    pthread_join(producer2, NULL);
-    pthread_join(consumer1, NULL);
-    pthread_join(consumer2, NULL);
+    printf("Running test_push_null_element...\n");
+
+    if (!queue_push(q, NULL)) {
+        printf("Failed pushing NULL\n");
+    } else {
+        printf("Passed pushing NULL\n");
+    }
+
+    void *elem;
+    if (!queue_pop(q, &elem)) {
+        printf("Failed popping NULL\n");
+    } else {
+        printf("Passed popping NULL\n");
+
+        // Check if the popped element is NULL
+        if (elem == NULL) {
+            printf("Popped element is NULL\n");
+        } else {
+            printf("Popped element is not NULL\n");
+        }
+    }
 
     queue_delete(&q);
+}
+
+void test_q_size_smaller() {
+    // Test for q size is smaller than production or consumption
+    printf("Running test_q_size_smaller...\n");
+
+    pthread_t producer, consumer;
+
+    q = queue_new(2); // Set the queue size to 1
+
+    int p = 0;
+    pthread_create(&producer, NULL, producer_thread, (void *)&p);
+    pthread_create(&consumer, NULL, consumer_thread, NULL);
+
+    pthread_join(producer, NULL);
+    pthread_join(consumer, NULL);
+}
+
+
+void test_thread_order_correct() {
+    // Test for test order within each thread is correct
+    printf("Running test_thread_order_correct...\n");
+
+    pthread_t producer1, consumer, producer2;
+
+    int p1 = 0; 
+    int p2 = 150;
+    pthread_create(&producer1, NULL, producer_thread, (void *)&p1);
+    pthread_create(&consumer, NULL, consumer_thread, NULL);
+    pthread_create(&producer2, NULL, producer_thread, (void *)&p2);
+
+    pthread_join(producer1, NULL);
+    pthread_join(consumer, NULL);
+    pthread_join(producer2, NULL);
+
+    
 }
 
 int main() {
-    // Run your tests
-    // test_queue_push_pop();
-    // test_queue_empty_pop();
-    // test_queue_full_push();
-    // test_queue_sequence();
-    // test_queue_push_null();
-    // test_queue_pop_null();
-    // test_queue_memory_leak();
-    // test_thread_safety();
-    // test_thread_order();
-    // test_validity();
-    test_completeness();
-
-    // Add more test calls as needed
-
-    printf("All tests passed!\n");
-
-    return 0;
-}
-
-void test_thread_order() {
-    queue_t *q = queue_new(5);
-
-    pthread_t producer1, producer2, consumer1, consumer2;
-
-    pthread_create(&producer1, NULL, producer_thread, (void *) q);
-    pthread_create(&producer2, NULL, producer_thread, (void *) q);
-    pthread_create(&consumer1, NULL, consumer_thread, (void *) q);
-    pthread_create(&consumer2, NULL, consumer_thread, (void *) q);
-
-    pthread_join(consumer1, NULL);
-    pthread_join(producer1, NULL);
-    pthread_join(producer2, NULL);
-    pthread_join(consumer2, NULL);
-
-    // Check that items are dequeued in the order they were enqueued
-    assert(item_dequeued_order[0] == item_enqueued_order[0]);
-    assert(item_dequeued_order[1] == item_enqueued_order[1]);
-    assert(item_dequeued_order[2] == item_enqueued_order[2]);
-    // ... add more checks as needed
-
+    q = queue_new(50);
+    // test_q_is_null();
+    // test_push_and_pop_null_element();
+    // test_q_size_smaller();
+    test_thread_order_correct();
     queue_delete(&q);
+    return 1;
 }
 
-void test_validity() {
-    queue_t *q = queue_new(5);
 
-    pthread_t producer, consumer;
 
-    pthread_create(&producer, NULL, producer_thread, (void *) q);
-    pthread_create(&consumer, NULL, consumer_thread, (void *) q);
 
-    pthread_join(producer, NULL);
-    pthread_join(consumer, NULL);
 
-    // Check that the consumer reads only items produced by the producer
-    assert(consumer_reads_valid_items);
 
-    queue_delete(&q);
-}
 
-void test_completeness() {
-    queue_t *q = queue_new(5);
 
-    pthread_t producer, consumer;
 
-    pthread_create(&producer, NULL, producer_thread, (void *) q);
-    pthread_create(&consumer, NULL, consumer_thread, (void *) q);
 
-    pthread_join(producer, NULL);
-    pthread_join(consumer, NULL);
 
-    // Check that some consumer dequeues every item produced
-    assert(all_items_produced == all_items_consumed);
 
-    queue_delete(&q);
-}
 
-void test_queue_push_pop() {
-    queue_t *q = queue_new(5);
+// #include "queue.h"
 
-    int elem1 = 1;
-    int elem2 = 2;
+// #include <stdbool.h>
+// #include <stdio.h>
+// #include <stdlib.h>
+// #include <pthread.h>
+// #include <unistd.h>
 
-    assert(queue_push(q, &elem1) == true);
-    assert(queue_push(q, &elem2) == true);
+// pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+// pthread_cond_t c = PTHREAD_COND_INITIALIZER;
+// int ops = 0;
+// queue_t *q = NULL;
 
-    int *pop_elem1;
-    int *pop_elem2;
+// void pop_check(queue_t *q, void *elem) {
+//   bool rtn = queue_pop(q, elem);
+//   if (!rtn) {
+//     fprintf(stderr, "queue_pop failed!\n");
+//     exit(2);
+//   }
+// }
 
-    assert(queue_pop(q, (void **) &pop_elem1) == true);
-    assert(queue_pop(q, (void **) &pop_elem2) == true);
+// void push_check(queue_t *q, void *elem) {
+//   bool rtn = queue_push(q, elem);
+//   if (!rtn) {
+//     fprintf(stderr, "queue_push failed!\n");
+//     exit(3);
+//   }
+// }
 
-    assert(*pop_elem1 == elem1);
-    assert(*pop_elem2 == elem2);
+// void *producer_thread(void *arg) {
+//   // int id = pthread_self();
+//   int x = *((int *)arg);
 
-    queue_delete(&q);
-}
+//   for (int i = 0; i < 15; ++i) {
+//     int *elem = malloc(sizeof(int));
+//     *elem = x + i;
+//     push_check(q, elem);
+//   }
 
-void test_queue_empty_pop() {
-    queue_t *q = queue_new(5);
+//   return NULL;
 
-    int *elem;
-    assert(queue_pop(q, (void **) &elem) == false);
 
-    queue_delete(&q);
-}
 
-void test_queue_full_push() {
-    queue_t *q = queue_new(2);
+//   // // Push NULL elements
+//   // // for (int i = 0; i < 5; ++i) {
+//   // //   push_check(q, NULL);
+//   // // }
 
-    int elem1 = 1;
-    int elem2 = 2;
-    int elem3 = 3;
 
-    assert(queue_push(q, &elem1) == true);
-    assert(queue_push(q, &elem2) == true);
-    assert(queue_push(q, &elem3) == false);
+//   // return NULL;
+// }
 
-    queue_delete(&q);
-}
+// void *consumer_thread() {
 
-void test_queue_sequence() {
-    queue_t *q = queue_new(3);
+//   // for (int i = 0; i < 5; ++i) {
+//   //   int *elem;
+    
+//   //   pop_check(q, (void **)&elem);
 
-    int elem1 = 1;
-    int elem2 = 2;
+    
+    
+//   //   if (elem != NULL) {
+//   //     printf("Consumer thread popped element %d\n", *elem);
+//   //     free(elem);
+//   //   } else {
+//   //     printf("Consumer thread popped NULL element\n");
+//   //   }
+//   // }
 
-    assert(queue_push(q, &elem1) == true);
-    assert(queue_push(q, &elem2) == true);
+//   // return NULL;
+//   // int id = pthread_self();
+//   int last_base_100;
+//   int last_base_10;
 
-    int *pop_elem1;
-    int *pop_elem2;
+//   for (int i = 0; i < 30; ++i) {
+//     int *elem;
+//     pop_check(q, (void **)&elem);
+//     // printf("###### Consumer thread popped element %d\n", *elem);
 
-    assert(queue_pop(q, (void **) &pop_elem1) == true);
-    assert(queue_pop(q, (void **) &pop_elem2) == true);
+//     int value = *elem;
+//     if (value >= 100) {
+//       if (value < last_base_100) {
+//         exit(2);
+//       } else {
+//         last_base_100 = value;
+//       }
+//     } else {
+//       if (value < last_base_10) {
+//         exit(3);
+//       } else {
+//         last_base_10 = value;
+//       }
+//     }
 
-    assert(*pop_elem1 == elem1);
-    assert(*pop_elem2 == elem2);
+//     free(elem);
+//   }
 
-    queue_delete(&q);
-}
+//   return NULL;
+// }
 
-void test_queue_push_null() {
-    queue_t *q = queue_new(5);
+// int main() {
 
-    assert(queue_push(q, NULL) == false);
+//   q = queue_new(10);
+//   if (q == NULL) {
+//     return 10;
+//   }
+//   pthread_t producer1, consumer, producer2; 
 
-    queue_delete(&q);
-}
 
-void test_queue_pop_null() {
-    queue_t *q = queue_new(5);
+//   int p1 = 0; 
+//   int p2 = 100;
+//   pthread_create(&producer1, NULL, producer_thread, (void *)&p1);
+//   pthread_create(&consumer, NULL, consumer_thread, NULL);
+//   pthread_create(&producer2, NULL, producer_thread, (void *)&p2);
 
-    int *elem;
-    assert(queue_pop(q, (void **) &elem) == false);
+  
+//   pthread_join(producer1, NULL);
+//   pthread_join(consumer, NULL);
+//   pthread_join(producer2, NULL);
 
-    queue_delete(&q);
-}
 
-void test_queue_memory_leak() {
-    // This test is to check for memory leaks, not functional correctness
-    for (int i = 0; i < 1000; ++i) {
-        queue_t *q = queue_new(10);
-        queue_delete(&q);
-    }
-}
+//   return 1;
+// }
+
+
+

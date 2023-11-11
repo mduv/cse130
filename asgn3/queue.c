@@ -45,6 +45,7 @@ bool queue_push(queue_t *q, void *elem) {
     pthread_cond_signal(&q->not_empty);
     // printf("Signaled not_empty in push\n"); // Add this line
 
+    // printf("Producer thread pushed element pointer %p\n", elem);
     // printf("Producer thread pushed element %d\n", *((int*)elem));
     pthread_mutex_unlock(&q->lock);
 
@@ -74,10 +75,8 @@ bool queue_pop(queue_t *q, void **elem) {
 
     pthread_cond_signal(&q->not_full);
     // printf("Signaled not_full in pop\n"); // Add this line
-    
     // int *a = *(int **)elem;
     // printf("#################################### Consumer thread popped element %d\n", *a);
-
 
     pthread_mutex_unlock(&q->lock);
     // printf("Pop thread released lock\n");
