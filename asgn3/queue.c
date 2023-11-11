@@ -17,9 +17,7 @@ struct queue {
     pthread_cond_t not_full;
 };
 
-// Rest of your implementation...
 
-// In queue.c
 bool queue_push(queue_t *q, void *elem) {
 
     if (q == NULL) {

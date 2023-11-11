@@ -1,5 +1,6 @@
 #include <pthread.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 typedef enum { READERS, WRITERS, N_WAY } PRIORITY;
 
@@ -48,6 +49,7 @@ void reader_lock(rwlock_t *rw) {
     pthread_mutex_lock(&rw->g);
 
     rw->num_readers_waiting++;
+    // printf("Readers waiting: %d\n", rw->num_readers_waiting);
 
     while ((rw->priority == WRITERS && (rw->num_writers_waiting > 0)) || (rw->writer_active)
            || ((rw->priority == N_WAY) && (rw->num_writers_waiting > 0)
@@ -56,10 +58,14 @@ void reader_lock(rwlock_t *rw) {
     }
 
     rw->num_readers_active++;
+    // printf("Readers active: %d\n", rw->num_readers_active);
 
     rw->num_readers_since_last_write++;
+    // printf("Readers since last write: %d\n", rw->num_readers_since_last_write);
 
     rw->num_readers_waiting--;
+    // printf("Readers waiting: %d\n", rw->num_readers_waiting);
+
 
     pthread_mutex_unlock(&rw->g);
 }
@@ -68,6 +74,7 @@ void reader_unlock(rwlock_t *rw) {
     pthread_mutex_lock(&rw->g);
 
     rw->num_readers_active--;
+    // printf("Readers active: %d\n", rw->num_readers_active);
 
     if (rw->num_readers_active == 0) {
         pthread_cond_broadcast(&rw->cond);
@@ -80,6 +87,7 @@ void writer_lock(rwlock_t *rw) {
     pthread_mutex_lock(&rw->g);
 
     rw->num_writers_waiting++;
+    // printf("Writers waiting: %d\n", rw->num_writers_waiting);
 
     while ((rw->priority == READERS && rw->num_readers_waiting > 0) || (rw->num_readers_active > 0)
            || (rw->writer_active)
@@ -89,7 +97,9 @@ void writer_lock(rwlock_t *rw) {
     }
 
     rw->num_writers_waiting--;
+    // printf("Writers waiting: %d\n", rw->num_writers_waiting);
     rw->writer_active = 1;
+    // printf("Writers active: %d\n", rw->writer_active);
 
     pthread_mutex_unlock(&rw->g);
 }
@@ -98,7 +108,10 @@ void writer_unlock(rwlock_t *rw) {
     pthread_mutex_lock(&rw->g);
 
     rw->writer_active = 0;
+    // printf("Writers active: %d\n", rw->writer_active);
     rw->num_readers_since_last_write = 0;
+    // printf("Readers since last write: %d\n", rw->num_readers_since_last_write);
+
     pthread_cond_broadcast(&rw->cond);
 
     pthread_mutex_unlock(&rw->g);
