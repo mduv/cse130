@@ -17,7 +17,7 @@ struct queue {
     pthread_cond_t not_full;
 };
 
-// Rest of your implementation... 
+// Rest of your implementation...
 
 // In queue.c
 bool queue_push(queue_t *q, void *elem) {
@@ -27,7 +27,6 @@ bool queue_push(queue_t *q, void *elem) {
     }
 
     pthread_mutex_lock(&q->lock);
-
 
     while (q->count == q->size) {
         // Queue is full, wait for it to become not full
@@ -39,8 +38,6 @@ bool queue_push(queue_t *q, void *elem) {
     q->rear = (q->rear + 1) % q->size;
     q->count += 1;
     // printf("Producer count after push: %d\n", q->count);
-
-    
 
     pthread_cond_signal(&q->not_empty);
     // printf("Signaled not_empty in push\n"); // Add this line

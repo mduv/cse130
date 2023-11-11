@@ -1,7 +1,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 
-typedef enum { READERS, WRITERS, N_WAY} PRIORITY;
+typedef enum { READERS, WRITERS, N_WAY } PRIORITY;
 
 typedef struct rwlock {
     pthread_mutex_t g;
@@ -15,8 +15,8 @@ typedef struct rwlock {
     int n;
 } rwlock_t;
 
-rwlock_t* rwlock_new(PRIORITY p, int n) {
-    rwlock_t* rwlock = (rwlock_t*)malloc(sizeof(rwlock_t));
+rwlock_t *rwlock_new(PRIORITY p, int n) {
+    rwlock_t *rwlock = (rwlock_t *) malloc(sizeof(rwlock_t));
     if (!rwlock) {
         // Handle memory allocation failure
         return NULL;
@@ -49,7 +49,9 @@ void reader_lock(rwlock_t *rw) {
 
     rw->num_readers_waiting++;
 
-    while ( (rw->priority == WRITERS && (rw->num_writers_waiting > 0)) || (rw->writer_active) || ((rw->priority == N_WAY) && (rw->num_writers_waiting > 0) && (rw->num_readers_since_last_write >= rw->n)) ) {
+    while ((rw->priority == WRITERS && (rw->num_writers_waiting > 0)) || (rw->writer_active)
+           || ((rw->priority == N_WAY) && (rw->num_writers_waiting > 0)
+               && (rw->num_readers_since_last_write >= rw->n))) {
         pthread_cond_wait(&rw->cond, &rw->g);
     }
 
@@ -79,7 +81,10 @@ void writer_lock(rwlock_t *rw) {
 
     rw->num_writers_waiting++;
 
-    while ((rw->priority == READERS && rw->num_readers_waiting > 0) || (rw->num_readers_active > 0) || (rw->writer_active) || ((rw->priority == N_WAY) && (rw->num_readers_waiting > 0) && (rw->num_readers_since_last_write < rw->n)) ) {
+    while ((rw->priority == READERS && rw->num_readers_waiting > 0) || (rw->num_readers_active > 0)
+           || (rw->writer_active)
+           || ((rw->priority == N_WAY) && (rw->num_readers_waiting > 0)
+               && (rw->num_readers_since_last_write < rw->n))) {
         pthread_cond_wait(&rw->cond, &rw->g);
     }
 
