@@ -66,7 +66,6 @@ void reader_lock(rwlock_t *rw) {
     rw->num_readers_waiting--;
     // printf("Readers waiting: %d\n", rw->num_readers_waiting);
 
-
     pthread_mutex_unlock(&rw->g);
 }
 
