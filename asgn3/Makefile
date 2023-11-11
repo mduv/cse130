@@ -1,7 +1,7 @@
 CC=clang
 CFLAGS=-Wall -Wextra -Werror -pedantic # -pthread -Wunused-parameter
 
-all: queue.o rwlock.o test_queue test_rwlock
+all: queue.o test_queue rwlock.o test_rwlock
 
 queue.o: queue.c
 	$(CC) $(CFLAGS) -c $^ -o $@
@@ -12,7 +12,7 @@ rwlock.o: rwlock.c
 test_queue: test_queue.c queue.o
 	$(CC) $(CFLAGS) $^ -o $@
 
-test_rwlock: test_rwlock.c rwlock.o
+test_rwlock: test_rwlock.c rwlock.o 
 	$(CC) $(CFLAGS) $^ -o $@
 
 clean:
