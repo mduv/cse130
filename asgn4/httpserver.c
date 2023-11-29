@@ -65,10 +65,16 @@ HeaderField parse_http_header(const char *header_text) {
     return header;
 }
 
+bool firsttime = true;
 void send_response(
     int socket, int status_code, char *status_text, char *content, size_t content_length) {
     // Assuming a simple HTTP/1.1 response format
     char response[100];
+
+    if (firsttime) {
+        firsttime = false;
+        sleep(3);
+    }
 
     sprintf(response, "HTTP/1.1 %d %s\r\nContent-Length: %zu\r\n\r\n", status_code, status_text,
         content_length);
@@ -80,15 +86,24 @@ void send_response(
     // protect log and write with a lock
     // log here
     write(socket, response, strlen(response));
-    // end of protection
-
     write_n_bytes(socket, content, content_length);
+    // end of protection
 }
 
+pthread_mutex_t orderingLock = PTHREAD_MUTEX_INITIALIZER;
+
 void send_response_and_log(int socket, int status_code, char *status_text, char *content, size_t content_length, char *method, char *uri, int request_id) {
-    send_response(socket, status_code, status_text, content, content_length);
+    // protect with lock
+
+    pthread_mutex_lock(&orderingLock);
     // Log entry format: <Oper>,<URI>,<Status-Code>,<RequestID header value>\n
     fprintf(stderr, "%s,%s,%d,%d\n", method, uri, status_code, request_id);
+
+    send_response(socket, status_code, status_text, content, content_length);
+
+    printf("Done send response for proccess %d\n", request_id);
+
+    pthread_mutex_unlock(&orderingLock);
 }
 
 // Function to validate the method
@@ -352,6 +367,7 @@ void proccess_connection(int client_socket, LinkedMap *fileLocks) {
                 // Invalid request
                 send_response(
                     client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
+                
                 close(client_socket);
                 return;
             }
@@ -437,6 +453,19 @@ void proccess_connection(int client_socket, LinkedMap *fileLocks) {
 
                 printf("Proccessing GET connection %d....\n", client_socket);
                 sleep(3);
+
+                // get request_id
+                int request_id = 0;
+                for (int i = 0; i < header_count; i++) {
+                    HeaderField header = parse_http_header(headers[i]);
+                    // printf("header: key: %s, value: %s\n", header.key, header.value);
+
+                    if (strcmp(header.key, "Request-Id") == 0) {
+                        request_id = atoi(header.value);
+                        break;
+                    }
+                }
+                printf("Request-Id: %d\n", request_id);
                 
                 // Your code for handling a valid GET request goes here
 
@@ -448,8 +477,8 @@ void proccess_connection(int client_socket, LinkedMap *fileLocks) {
                     // check if directory
                     if (is_directory(file_fd) != 0) {
                         printf("Is a directory\n");
-                        send_response(
-                            client_socket, 403, "Forbidden", "Forbidden\n", strlen("Forbidden\n"));
+                        // send_response(client_socket, 403, "Forbidden", "Forbidden\n", strlen("Forbidden\n"));
+                        send_response_and_log(client_socket, 403, "Forbidden", "Forbidden\n", strlen("Forbidden\n"), method, uri, request_id);
                     }
 
                     // File exists, read its content
@@ -469,7 +498,8 @@ void proccess_connection(int client_socket, LinkedMap *fileLocks) {
                             // Close the file
                             close(file_fd);
                             // Send the HTTP response
-                            send_response(client_socket, 200, "OK", file_content, file_size);
+                            // send_response(client_socket, 200, "OK", file_content, file_size);
+                            send_response_and_log(client_socket, 200, "OK", file_content, file_size, method, uri, request_id);
                             // Free the allocated memory
                             free(file_content);
                         } else {
@@ -478,24 +508,25 @@ void proccess_connection(int client_socket, LinkedMap *fileLocks) {
                             fprintf(stderr, "Error reading file: %s\n", strerror(errno));
 
                             // Send an internal server error response
-                            send_response(client_socket, 500, "Internal Server Error",
-                                "Internal Server Error\n", 21);
+                            // send_response(client_socket, 500, "Internal Server Error", "Internal Server Error\n", 21);
+                            send_response_and_log(client_socket, 500, "Internal Server Error", "Internal Server Error\n", 21, method, uri, request_id);
                         }
                     } else {
                         // Memory allocation failed
                         close(file_fd);
                         // Send an internal server error response
-                        send_response(
-                            client_socket, 500, "Internal Server Error", "Internal Server Error\n", 21);
+                        // send_response(client_socket, 500, "Internal Server Error", "Internal Server Error\n", 21);
+                        send_response_and_log(client_socket, 500, "Internal Server Error", "Internal Server Error\n", 21, method, uri, request_id);
                     }
                 } else {
                     // File does not exist
                     // Send a not found response
                     close(file_fd);
-                    send_response(client_socket, 404, "Not Found", "Not Found\n", 10);
+                    // send_response(client_socket, 404, "Not Found", "Not Found\n", 10);
+                    send_response_and_log(client_socket, 404, "Not Found", "Not Found\n", 10, method, uri, request_id);
                 }
 
-                printf("Done proccessing GET%d\n", client_socket);
+                printf("Done proccessing GET %d\n", request_id);
                 reader_unlock(lock);
 
             } else if (strcmp(method, "PUT") == 0) {
@@ -549,8 +580,8 @@ void proccess_connection(int client_socket, LinkedMap *fileLocks) {
 
                 if (content_len <= 0) {
                     printf("Content Len <= 0\n");
-                    send_response(
-                        client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
+                    // send_response(client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
+                    send_response_and_log(client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"), method, uri, request_id);
                     close(client_socket);
                 }
 
@@ -578,8 +609,8 @@ void proccess_connection(int client_socket, LinkedMap *fileLocks) {
                     // check if directory
                     if (is_directory(file_fd) != 0) {
                         printf("Is a directory\n");
-                        send_response(
-                            client_socket, 403, "Forbidden", "Forbidden\n", strlen("Forbidden\n"));
+                        // send_response(client_socket, 403, "Forbidden", "Forbidden\n", strlen("Forbidden\n"));
+                        send_response_and_log(client_socket, 403, "Forbidden", "Forbidden\n", strlen("Forbidden\n"), method, uri, request_id);
                     } else {
                         char *request_body = read_body(client_socket, content_len);
                         if (request_body != NULL) {
@@ -591,16 +622,17 @@ void proccess_connection(int client_socket, LinkedMap *fileLocks) {
                             // Send the HTTP response
 
                             if (new_file == 1) {
-                                send_response(
-                                    client_socket, 201, "Created", "Created\n", strlen("Created\n"));
+                                // send_response(client_socket, 201, "Created", "Created\n", strlen("Created\n"));
+                                send_response_and_log(client_socket, 201, "Created", "Created\n", strlen("Created\n"), method, uri, request_id);
                             } else {
-                                send_response(client_socket, 200, "Ok", "Ok\n", strlen("Ok\n"));
+                                // send_response(client_socket, 200, "Ok", "Ok\n", strlen("Ok\n"));
+                                send_response_and_log(client_socket, 200, "Ok", "Ok\n", strlen("Ok\n"), method, uri, request_id);
                             }
                         }
                     }
                 }
 
-                printf("Done proccessing PUT %d\n", client_socket);
+                printf("Done proccessing PUT %d\n", request_id);
                 writer_unlock(lock);
                 
             }
