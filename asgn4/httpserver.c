@@ -65,16 +65,16 @@ HeaderField parse_http_header(const char *header_text) {
     return header;
 }
 
-bool firsttime = true;
+// bool firsttime = true;
 void send_response(
     int socket, int status_code, char *status_text, char *content, size_t content_length) {
     // Assuming a simple HTTP/1.1 response format
     char response[100];
 
-    if (firsttime) {
-        firsttime = false;
-        sleep(3);
-    }
+    // if (firsttime) {
+    //     firsttime = false;
+    //     sleep(3);
+    // }
 
     sprintf(response, "HTTP/1.1 %d %s\r\nContent-Length: %zu\r\n\r\n", status_code, status_text,
         content_length);
@@ -98,10 +98,11 @@ void send_response_and_log(int socket, int status_code, char *status_text, char 
     pthread_mutex_lock(&orderingLock);
     // Log entry format: <Oper>,<URI>,<Status-Code>,<RequestID header value>\n
     fprintf(stderr, "%s,%s,%d,%d\n", method, uri, status_code, request_id);
+    
 
     send_response(socket, status_code, status_text, content, content_length);
 
-    printf("Done send response for proccess %d\n", request_id);
+    // printf("Done send response for proccess %d\n", request_id);
 
     pthread_mutex_unlock(&orderingLock);
 }
@@ -385,7 +386,7 @@ void proccess_connection(int client_socket, LinkedMap *fileLocks) {
                 return;
             }
             for (int i = 0; i < header_count; i++) {
-                printf("headers[%d]: %s\n", i, headers[i]);
+                // printf("headers[%d]: %s\n", i, headers[i]);
             }
 
             // validate version
@@ -449,10 +450,10 @@ void proccess_connection(int client_socket, LinkedMap *fileLocks) {
                 // printf("hello\n");
 
                 reader_lock(lock);
-                printf("I got a reader lock...\n");
+                // printf("I got a reader lock...\n");
 
-                printf("Proccessing GET connection %d....\n", client_socket);
-                sleep(3);
+                // printf("Proccessing GET connection %d....\n", client_socket);
+                // sleep(3);
 
                 // get request_id
                 int request_id = 0;
@@ -465,7 +466,7 @@ void proccess_connection(int client_socket, LinkedMap *fileLocks) {
                         break;
                     }
                 }
-                printf("Request-Id: %d\n", request_id);
+                // printf("Request-Id: %d\n", request_id);
                 
                 // Your code for handling a valid GET request goes here
 
@@ -526,7 +527,7 @@ void proccess_connection(int client_socket, LinkedMap *fileLocks) {
                     send_response_and_log(client_socket, 404, "Not Found", "Not Found\n", 10, method, uri, request_id);
                 }
 
-                printf("Done proccessing GET %d\n", request_id);
+                // printf("Done proccessing GET %d\n", request_id);
                 reader_unlock(lock);
 
             } else if (strcmp(method, "PUT") == 0) {
@@ -547,10 +548,10 @@ void proccess_connection(int client_socket, LinkedMap *fileLocks) {
 
                 writer_lock(lock);
 
-                printf("I got a writer lock...\n");
+                // printf("I got a writer lock...\n");
 
-                printf("Proccessing PUT connection %d....\n", client_socket);
-                sleep(3);
+                // printf("Proccessing PUT connection %d....\n", client_socket);
+                // sleep(3);
 
                 
                 int content_len = 0;
@@ -576,7 +577,7 @@ void proccess_connection(int client_socket, LinkedMap *fileLocks) {
                         break;
                     }
                 }
-                printf("Request-Id: %d\n", request_id);
+                // printf("Request-Id: %d\n", request_id);
 
                 if (content_len <= 0) {
                     printf("Content Len <= 0\n");
@@ -632,7 +633,7 @@ void proccess_connection(int client_socket, LinkedMap *fileLocks) {
                     }
                 }
 
-                printf("Done proccessing PUT %d\n", request_id);
+                // printf("Done proccessing PUT %d\n", request_id);
                 writer_unlock(lock);
                 
             }
