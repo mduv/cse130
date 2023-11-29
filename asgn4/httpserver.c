@@ -10,7 +10,6 @@
 #include <stdint.h>
 #include <pthread.h>
 
-
 #include "rwlock.h"
 #include "queue.h"
 
@@ -92,13 +91,13 @@ void send_response(
 
 pthread_mutex_t orderingLock = PTHREAD_MUTEX_INITIALIZER;
 
-void send_response_and_log(int socket, int status_code, char *status_text, char *content, size_t content_length, char *method, char *uri, int request_id) {
+void send_response_and_log(int socket, int status_code, char *status_text, char *content,
+    size_t content_length, char *method, char *uri, int request_id) {
     // protect with lock
 
     pthread_mutex_lock(&orderingLock);
     // Log entry format: <Oper>,<URI>,<Status-Code>,<RequestID header value>\n
     fprintf(stderr, "%s,%s,%d,%d\n", method, uri, status_code, request_id);
-    
 
     send_response(socket, status_code, status_text, content, content_length);
 
@@ -346,298 +345,292 @@ void linkedmap_cleanup(LinkedMap *map) {
 pthread_mutex_t mapLock;
 
 void proccess_connection(int client_socket, LinkedMap *fileLocks) {
-            // Read request line
-            char *request_line = read_token(client_socket);
-            if (!request_line) {
-                // Invalid request
-                printf("Invalid request line\n");
-                send_response(
-                    client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
-                close(client_socket);
-                return;
+    // Read request line
+    char *request_line = read_token(client_socket);
+    if (!request_line) {
+        // Invalid request
+        printf("Invalid request line\n");
+        send_response(client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
+        close(client_socket);
+        return;
+    }
+    // printf("request line: %s\n", request_line);
+
+    // Parse the request line
+    char method[MAX_BUFFER_SIZE] = { 0 };
+    char uri[MAX_BUFFER_SIZE] = { 0 };
+    char version[MAX_BUFFER_SIZE] = { 0 };
+    int parsed = sscanf(request_line, "%s %s %s", method, uri, version);
+    if (parsed < 2) {
+        printf("Invalid Request Line\n");
+        // Invalid request
+        send_response(client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
+
+        close(client_socket);
+        return;
+    }
+    // printf("method: %s, uri: %s, version: %s, parsed: %d\n", method, uri, version, parsed);
+
+    // Read headers
+    char *headers[MAX_HEADERS];
+    int header_count = read_headers(client_socket, headers);
+    if (header_count < 0) {
+        printf("Missing headers\n");
+        // Invalid request
+        send_response(client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
+        close(client_socket);
+        return;
+    }
+    for (int i = 0; i < header_count; i++) {
+        // printf("headers[%d]: %s\n", i, headers[i]);
+    }
+
+    // validate version
+    if (validate_version(version) != 0) {
+        printf("Invalid version\n");
+        send_response(client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
+        close(client_socket);
+        return;
+    } else if (strcmp(version, "HTTP/1.1") != 0) {
+        send_response(client_socket, 505, "Version Not Supported", "Version Not Supported\n",
+            strlen("Version Not Supported\n"));
+        close(client_socket);
+        return;
+    }
+
+    // validate uri
+    if (validate_uri(uri) != 0) {
+        printf("Invalid URI\n");
+        send_response(client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
+        close(client_socket);
+        return;
+    }
+
+    // validate method
+    if (validate_method(method) != 0) {
+        printf("Invalid method\n");
+        send_response(client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
+        close(client_socket);
+        return;
+    } else if ((strcmp(method, "PUT") != 0) && (strcmp(method, "GET") != 0)) {
+        send_response(client_socket, 501, "Not Implemented", "Not Implemented\n",
+            strlen("Not Implemented\n"));
+        close(client_socket);
+        return;
+    }
+
+    if (strcmp(method, "GET") == 0) {
+        // lock map
+        pthread_mutex_lock(&mapLock);
+
+        // get lock from map
+        rwlock_t *lock = linkedmap_get_lock(fileLocks, uri);
+        // printf("uri: %s\n", uri);
+        if (lock == NULL) {
+            // printf("Lock is null, inserting...\n");
+            // Insert a lock into hashtable
+            linkedmap_insert(fileLocks, uri, N_WAY, 1);
+        }
+        // unlock map
+        lock = linkedmap_get_lock(fileLocks, uri);
+        pthread_mutex_unlock(&mapLock);
+
+        // printf("hello\n");
+
+        reader_lock(lock);
+        // printf("I got a reader lock...\n");
+
+        // printf("Proccessing GET connection %d....\n", client_socket);
+        // sleep(3);
+
+        // get request_id
+        int request_id = 0;
+        for (int i = 0; i < header_count; i++) {
+            HeaderField header = parse_http_header(headers[i]);
+            // printf("header: key: %s, value: %s\n", header.key, header.value);
+
+            if (strcmp(header.key, "Request-Id") == 0) {
+                request_id = atoi(header.value);
+                break;
             }
-            // printf("request line: %s\n", request_line);
+        }
+        // printf("Request-Id: %d\n", request_id);
 
-            // Parse the request line
-            char method[MAX_BUFFER_SIZE] = { 0 };
-            char uri[MAX_BUFFER_SIZE] = { 0 };
-            char version[MAX_BUFFER_SIZE] = { 0 };
-            int parsed = sscanf(request_line, "%s %s %s", method, uri, version);
-            if (parsed < 2) {
-                printf("Invalid Request Line\n");
-                // Invalid request
-                send_response(
-                    client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
-                
-                close(client_socket);
-                return;
-            }
-            // printf("method: %s, uri: %s, version: %s, parsed: %d\n", method, uri, version, parsed);
+        // Your code for handling a valid GET request goes here
 
-            // Read headers
-            char *headers[MAX_HEADERS];
-            int header_count = read_headers(client_socket, headers);
-            if (header_count < 0) {
-                printf("Missing headers\n");
-                // Invalid request
-                send_response(
-                    client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
-                close(client_socket);
-                return;
-            }
-            for (int i = 0; i < header_count; i++) {
-                // printf("headers[%d]: %s\n", i, headers[i]);
+        // Open the file for reading
+        int file_fd = open(uri + 1, O_RDONLY);
+
+        if (file_fd != -1) {
+
+            // check if directory
+            if (is_directory(file_fd) != 0) {
+                printf("Is a directory\n");
+                // send_response(client_socket, 403, "Forbidden", "Forbidden\n", strlen("Forbidden\n"));
+                send_response_and_log(client_socket, 403, "Forbidden", "Forbidden\n",
+                    strlen("Forbidden\n"), method, uri, request_id);
             }
 
-            // validate version
-            if (validate_version(version) != 0) {
-                printf("Invalid version\n");
-                send_response(
-                    client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
-                close(client_socket);
-                return;
-            } else if (strcmp(version, "HTTP/1.1") != 0) {
-                send_response(client_socket, 505, "Version Not Supported", "Version Not Supported\n",
-                    strlen("Version Not Supported\n"));
-                close(client_socket);
-                return;
-            }
+            // File exists, read its content
+            off_t file_size = lseek(file_fd, 0, SEEK_END);
+            lseek(file_fd, 0, SEEK_SET);
 
-            // validate uri
-            if (validate_uri(uri) != 0) {
-                printf("Invalid URI\n");
-                send_response(
-                    client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
-                close(client_socket);
-                return;
-            }
+            // Allocate a buffer for the file content
+            char *file_content = malloc(file_size + 1);
 
-            // validate method
-            if (validate_method(method) != 0) {
-                printf("Invalid method\n");
-                send_response(
-                    client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
-                close(client_socket);
-                return;
-            } else if ((strcmp(method, "PUT") != 0) && (strcmp(method, "GET") != 0)) {
-                send_response(client_socket, 501, "Not Implemented", "Not Implemented\n",
-                    strlen("Not Implemented\n"));
-                close(client_socket);
-                return;
-            }
-
-            
-
-            if (strcmp(method, "GET") == 0) {
-                // lock map
-                pthread_mutex_lock(&mapLock);
-
-                
-
-                // get lock from map
-                rwlock_t *lock = linkedmap_get_lock(fileLocks, uri);
-                // printf("uri: %s\n", uri);
-                if (lock == NULL) {
-                    // printf("Lock is null, inserting...\n");
-                    // Insert a lock into hashtable
-                    linkedmap_insert(fileLocks, uri, N_WAY, 1);
-                }
-                // unlock map
-                lock = linkedmap_get_lock(fileLocks, uri);
-                pthread_mutex_unlock(&mapLock);
-
-                
-                // printf("hello\n");
-
-                reader_lock(lock);
-                // printf("I got a reader lock...\n");
-
-                // printf("Proccessing GET connection %d....\n", client_socket);
-                // sleep(3);
-
-                // get request_id
-                int request_id = 0;
-                for (int i = 0; i < header_count; i++) {
-                    HeaderField header = parse_http_header(headers[i]);
-                    // printf("header: key: %s, value: %s\n", header.key, header.value);
-
-                    if (strcmp(header.key, "Request-Id") == 0) {
-                        request_id = atoi(header.value);
-                        break;
-                    }
-                }
-                // printf("Request-Id: %d\n", request_id);
-                
-                // Your code for handling a valid GET request goes here
-
-                // Open the file for reading
-                int file_fd = open(uri + 1, O_RDONLY);
-
-                if (file_fd != -1) {
-
-                    // check if directory
-                    if (is_directory(file_fd) != 0) {
-                        printf("Is a directory\n");
-                        // send_response(client_socket, 403, "Forbidden", "Forbidden\n", strlen("Forbidden\n"));
-                        send_response_and_log(client_socket, 403, "Forbidden", "Forbidden\n", strlen("Forbidden\n"), method, uri, request_id);
-                    }
-
-                    // File exists, read its content
-                    off_t file_size = lseek(file_fd, 0, SEEK_END);
-                    lseek(file_fd, 0, SEEK_SET);
-
-                    // Allocate a buffer for the file content
-                    char *file_content = malloc(file_size + 1);
-
-                    if (file_content) {
-                        // Read the file content
-                        ssize_t bytes_read = read_n_bytes(file_fd, file_content, file_size);
-                        // printf("number of bytes read: %zd\n", bytes_read);
-                        if (bytes_read != -1) {
-                            // Null-terminate the content
-                            file_content[bytes_read] = '\0';
-                            // Close the file
-                            close(file_fd);
-                            // Send the HTTP response
-                            // send_response(client_socket, 200, "OK", file_content, file_size);
-                            send_response_and_log(client_socket, 200, "OK", file_content, file_size, method, uri, request_id);
-                            // Free the allocated memory
-                            free(file_content);
-                        } else {
-                            // Error reading file
-                            close(file_fd);
-                            fprintf(stderr, "Error reading file: %s\n", strerror(errno));
-
-                            // Send an internal server error response
-                            // send_response(client_socket, 500, "Internal Server Error", "Internal Server Error\n", 21);
-                            send_response_and_log(client_socket, 500, "Internal Server Error", "Internal Server Error\n", 21, method, uri, request_id);
-                        }
-                    } else {
-                        // Memory allocation failed
-                        close(file_fd);
-                        // Send an internal server error response
-                        // send_response(client_socket, 500, "Internal Server Error", "Internal Server Error\n", 21);
-                        send_response_and_log(client_socket, 500, "Internal Server Error", "Internal Server Error\n", 21, method, uri, request_id);
-                    }
-                } else {
-                    // File does not exist
-                    // Send a not found response
+            if (file_content) {
+                // Read the file content
+                ssize_t bytes_read = read_n_bytes(file_fd, file_content, file_size);
+                // printf("number of bytes read: %zd\n", bytes_read);
+                if (bytes_read != -1) {
+                    // Null-terminate the content
+                    file_content[bytes_read] = '\0';
+                    // Close the file
                     close(file_fd);
-                    // send_response(client_socket, 404, "Not Found", "Not Found\n", 10);
-                    send_response_and_log(client_socket, 404, "Not Found", "Not Found\n", 10, method, uri, request_id);
-                }
-
-                // printf("Done proccessing GET %d\n", request_id);
-                reader_unlock(lock);
-
-            } else if (strcmp(method, "PUT") == 0) {
-
-                // lock map
-                pthread_mutex_lock(&mapLock);
-
-                // get lock from map
-                rwlock_t *lock = linkedmap_get_lock(fileLocks, uri);
-                if (lock == NULL) {
-                    // Insert a lock into hashtable
-                    linkedmap_insert(fileLocks, uri, N_WAY, 1);
-                }
-                // unlock map
-                lock = linkedmap_get_lock(fileLocks, uri);
-                pthread_mutex_unlock(&mapLock);
-
-
-                writer_lock(lock);
-
-                // printf("I got a writer lock...\n");
-
-                // printf("Proccessing PUT connection %d....\n", client_socket);
-                // sleep(3);
-
-                
-                int content_len = 0;
-                for (int i = 0; i < header_count; i++) {
-                    HeaderField header = parse_http_header(headers[i]);
-                    // printf("header: key: %s, value: %s\n", header.key, header.value);
-
-                    if (strcmp(header.key, "Content-Length") == 0) {
-                        content_len = atoi(header.value);
-                        break;
-                    }
-                }
-                // printf("Content length: %d\n", content_len);
-
-                // get request_id
-                int request_id = 0;
-                for (int i = 0; i < header_count; i++) {
-                    HeaderField header = parse_http_header(headers[i]);
-                    // printf("header: key: %s, value: %s\n", header.key, header.value);
-
-                    if (strcmp(header.key, "Request-Id") == 0) {
-                        request_id = atoi(header.value);
-                        break;
-                    }
-                }
-                // printf("Request-Id: %d\n", request_id);
-
-                if (content_len <= 0) {
-                    printf("Content Len <= 0\n");
-                    // send_response(client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
-                    send_response_and_log(client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"), method, uri, request_id);
-                    close(client_socket);
-                }
-
-                // Your code for handling a valid PUT request goes here
-                // Open the file for writing or create a new file
-                // int flags = O_WRONLY | O_CREAT | O_TRUNC;
-
-                int flags = O_WRONLY | O_TRUNC;
-                int new_file = 0;
-
-                int file_fd = open(uri + 1, flags, 0644);
-
-                if (file_fd == -1 && errno == ENOENT) {
-                    // file does not exists, create one
-                    new_file = 1;
-                    printf("file %s was created\n", uri + 1);
-                    close(file_fd);
-                    flags |= O_CREAT;
-                    file_fd = open(uri + 1, flags, 0644);
+                    // Send the HTTP response
+                    // send_response(client_socket, 200, "OK", file_content, file_size);
+                    send_response_and_log(
+                        client_socket, 200, "OK", file_content, file_size, method, uri, request_id);
+                    // Free the allocated memory
+                    free(file_content);
                 } else {
-                    // printf("--------file %s is not new %d-----\n", uri + 1, errno);
+                    // Error reading file
+                    close(file_fd);
+                    fprintf(stderr, "Error reading file: %s\n", strerror(errno));
+
+                    // Send an internal server error response
+                    // send_response(client_socket, 500, "Internal Server Error", "Internal Server Error\n", 21);
+                    send_response_and_log(client_socket, 500, "Internal Server Error",
+                        "Internal Server Error\n", 21, method, uri, request_id);
                 }
+            } else {
+                // Memory allocation failed
+                close(file_fd);
+                // Send an internal server error response
+                // send_response(client_socket, 500, "Internal Server Error", "Internal Server Error\n", 21);
+                send_response_and_log(client_socket, 500, "Internal Server Error",
+                    "Internal Server Error\n", 21, method, uri, request_id);
+            }
+        } else {
+            // File does not exist
+            // Send a not found response
+            close(file_fd);
+            // send_response(client_socket, 404, "Not Found", "Not Found\n", 10);
+            send_response_and_log(
+                client_socket, 404, "Not Found", "Not Found\n", 10, method, uri, request_id);
+        }
 
-                if (file_fd != -1) {
-                    // check if directory
-                    if (is_directory(file_fd) != 0) {
-                        printf("Is a directory\n");
-                        // send_response(client_socket, 403, "Forbidden", "Forbidden\n", strlen("Forbidden\n"));
-                        send_response_and_log(client_socket, 403, "Forbidden", "Forbidden\n", strlen("Forbidden\n"), method, uri, request_id);
+        // printf("Done proccessing GET %d\n", request_id);
+        reader_unlock(lock);
+
+    } else if (strcmp(method, "PUT") == 0) {
+
+        // lock map
+        pthread_mutex_lock(&mapLock);
+
+        // get lock from map
+        rwlock_t *lock = linkedmap_get_lock(fileLocks, uri);
+        if (lock == NULL) {
+            // Insert a lock into hashtable
+            linkedmap_insert(fileLocks, uri, N_WAY, 1);
+        }
+        // unlock map
+        lock = linkedmap_get_lock(fileLocks, uri);
+        pthread_mutex_unlock(&mapLock);
+
+        writer_lock(lock);
+
+        // printf("I got a writer lock...\n");
+
+        // printf("Proccessing PUT connection %d....\n", client_socket);
+        // sleep(3);
+
+        int content_len = 0;
+        for (int i = 0; i < header_count; i++) {
+            HeaderField header = parse_http_header(headers[i]);
+            // printf("header: key: %s, value: %s\n", header.key, header.value);
+
+            if (strcmp(header.key, "Content-Length") == 0) {
+                content_len = atoi(header.value);
+                break;
+            }
+        }
+        // printf("Content length: %d\n", content_len);
+
+        // get request_id
+        int request_id = 0;
+        for (int i = 0; i < header_count; i++) {
+            HeaderField header = parse_http_header(headers[i]);
+            // printf("header: key: %s, value: %s\n", header.key, header.value);
+
+            if (strcmp(header.key, "Request-Id") == 0) {
+                request_id = atoi(header.value);
+                break;
+            }
+        }
+        // printf("Request-Id: %d\n", request_id);
+
+        if (content_len <= 0) {
+            printf("Content Len <= 0\n");
+            // send_response(client_socket, 400, "Bad Request", "Bad Request\n", strlen("Bad Request\n"));
+            send_response_and_log(client_socket, 400, "Bad Request", "Bad Request\n",
+                strlen("Bad Request\n"), method, uri, request_id);
+            close(client_socket);
+        }
+
+        // Your code for handling a valid PUT request goes here
+        // Open the file for writing or create a new file
+        // int flags = O_WRONLY | O_CREAT | O_TRUNC;
+
+        int flags = O_WRONLY | O_TRUNC;
+        int new_file = 0;
+
+        int file_fd = open(uri + 1, flags, 0644);
+
+        if (file_fd == -1 && errno == ENOENT) {
+            // file does not exists, create one
+            new_file = 1;
+            printf("file %s was created\n", uri + 1);
+            close(file_fd);
+            flags |= O_CREAT;
+            file_fd = open(uri + 1, flags, 0644);
+        } else {
+            // printf("--------file %s is not new %d-----\n", uri + 1, errno);
+        }
+
+        if (file_fd != -1) {
+            // check if directory
+            if (is_directory(file_fd) != 0) {
+                printf("Is a directory\n");
+                // send_response(client_socket, 403, "Forbidden", "Forbidden\n", strlen("Forbidden\n"));
+                send_response_and_log(client_socket, 403, "Forbidden", "Forbidden\n",
+                    strlen("Forbidden\n"), method, uri, request_id);
+            } else {
+                char *request_body = read_body(client_socket, content_len);
+                if (request_body != NULL) {
+                    write_body(file_fd, request_body, content_len);
+                    // Free the allocated memory
+                    free(request_body);
+                    // Close the file
+                    close(file_fd);
+                    // Send the HTTP response
+
+                    if (new_file == 1) {
+                        // send_response(client_socket, 201, "Created", "Created\n", strlen("Created\n"));
+                        send_response_and_log(client_socket, 201, "Created", "Created\n",
+                            strlen("Created\n"), method, uri, request_id);
                     } else {
-                        char *request_body = read_body(client_socket, content_len);
-                        if (request_body != NULL) {
-                            write_body(file_fd, request_body, content_len);
-                            // Free the allocated memory
-                            free(request_body);
-                            // Close the file
-                            close(file_fd);
-                            // Send the HTTP response
-
-                            if (new_file == 1) {
-                                // send_response(client_socket, 201, "Created", "Created\n", strlen("Created\n"));
-                                send_response_and_log(client_socket, 201, "Created", "Created\n", strlen("Created\n"), method, uri, request_id);
-                            } else {
-                                // send_response(client_socket, 200, "Ok", "Ok\n", strlen("Ok\n"));
-                                send_response_and_log(client_socket, 200, "OK", "OK\n", strlen("OK\n"), method, uri, request_id);
-                            }
-                        }
+                        // send_response(client_socket, 200, "Ok", "Ok\n", strlen("Ok\n"));
+                        send_response_and_log(client_socket, 200, "OK", "OK\n", strlen("OK\n"),
+                            method, uri, request_id);
                     }
                 }
-
-                // printf("Done proccessing PUT %d\n", request_id);
-                writer_unlock(lock);
-                
             }
+        }
 
+        // printf("Done proccessing PUT %d\n", request_id);
+        writer_unlock(lock);
+    }
 }
 
 void dummy_proccess(int client_socket) {
@@ -653,8 +646,8 @@ LinkedMap fileLocks;
 void *worker_function() {
     while (1) {
         // Dequeue a client socket from the thread-safe queue
-        int* client_socket_ptr;
-        if (queue_pop(requestQueue, (void **)&client_socket_ptr)) {
+        int *client_socket_ptr;
+        if (queue_pop(requestQueue, (void **) &client_socket_ptr)) {
             // Process the request using the client_socket
             // (Your existing code for request processing goes here)
             // Process the connection
@@ -674,13 +667,11 @@ int main(int argc, char *argv[]) {
     int opt;
     while ((opt = getopt(argc, argv, "t:")) != -1) {
         switch (opt) {
-            case 't':
-                threads = atoi(optarg);
-                printf("threads: %d\n", threads);
-                break;
-            default:
-                fprintf(stderr, "Usage: %s [-t threads] <port>\n", argv[0]);
-                exit(EXIT_FAILURE);
+        case 't':
+            threads = atoi(optarg);
+            printf("threads: %d\n", threads);
+            break;
+        default: fprintf(stderr, "Usage: %s [-t threads] <port>\n", argv[0]); exit(EXIT_FAILURE);
         }
     }
 
@@ -698,7 +689,6 @@ int main(int argc, char *argv[]) {
     // Create and initialize a linked map
     linkedmap_init(&fileLocks);
 
-
     // Initialize the listener socket
     Listener_Socket listener;
     if (listener_init(&listener, port) != 0) {
@@ -708,9 +698,6 @@ int main(int argc, char *argv[]) {
 
     // Initialize reqeuest queue
     requestQueue = queue_new(threads);
-
-
-
 
     pthread_t worker_threads[threads];
 
@@ -722,14 +709,13 @@ int main(int argc, char *argv[]) {
     // Dispatcher thread
     while (1) {
         // Dynamically allocate memory for the client_socket
-        int *client_socket_ptr = (int *)malloc(sizeof(int));
+        int *client_socket_ptr = (int *) malloc(sizeof(int));
 
         if (client_socket_ptr == NULL) {
             // Malloc failure
             fprintf(stderr, "Malloc failed");
             break;
         }
-
 
         // Accept a new connection
         *client_socket_ptr = listener_accept(&listener);
@@ -743,15 +729,13 @@ int main(int argc, char *argv[]) {
 
         // printf("Accepted connection: %d\n", client_socket);
 
-
         // Enqueue the client socket into the thread-safe queue
-        if (!queue_push(requestQueue, (void *)client_socket_ptr)) {
+        if (!queue_push(requestQueue, (void *) client_socket_ptr)) {
             // Failed to enqueue, handle the error (e.g., close the socket)
             fprintf(stderr, "Failed to enqueue client socket\n");
             close(client_socket);
             free(client_socket_ptr);
         }
-
     }
 
     // Join worker threads (optional, depends on your implementation)
