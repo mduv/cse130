@@ -76,9 +76,19 @@ void send_response(
     // printf("response length: %lu, content length: %zu\n", strlen(response), content_length);
 
     // Send the response to the client
+
+    // protect log and write with a lock
+    // log here
     write(socket, response, strlen(response));
+    // end of protection
 
     write_n_bytes(socket, content, content_length);
+}
+
+void send_response_and_log(int socket, int status_code, char *status_text, char *content, size_t content_length, char *method, char *uri, int request_id) {
+    send_response(socket, status_code, status_text, content, content_length);
+    // Log entry format: <Oper>,<URI>,<Status-Code>,<RequestID header value>\n
+    fprintf(stderr, "%s,%s,%d,%d\n", method, uri, status_code, request_id);
 }
 
 // Function to validate the method
@@ -511,7 +521,7 @@ void proccess_connection(int client_socket, LinkedMap *fileLocks) {
                 printf("Proccessing PUT connection %d....\n", client_socket);
                 sleep(3);
 
-
+                
                 int content_len = 0;
                 for (int i = 0; i < header_count; i++) {
                     HeaderField header = parse_http_header(headers[i]);
@@ -523,6 +533,19 @@ void proccess_connection(int client_socket, LinkedMap *fileLocks) {
                     }
                 }
                 // printf("Content length: %d\n", content_len);
+
+                // get request_id
+                int request_id = 0;
+                for (int i = 0; i < header_count; i++) {
+                    HeaderField header = parse_http_header(headers[i]);
+                    // printf("header: key: %s, value: %s\n", header.key, header.value);
+
+                    if (strcmp(header.key, "Request-Id") == 0) {
+                        request_id = atoi(header.value);
+                        break;
+                    }
+                }
+                printf("Request-Id: %d\n", request_id);
 
                 if (content_len <= 0) {
                     printf("Content Len <= 0\n");
