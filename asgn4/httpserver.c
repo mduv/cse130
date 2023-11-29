@@ -73,7 +73,7 @@ void send_response(
     sprintf(response, "HTTP/1.1 %d %s\r\nContent-Length: %zu\r\n\r\n", status_code, status_text,
         content_length);
 
-    printf("response length: %lu, content length: %zu\n", strlen(response), content_length);
+    // printf("response length: %lu, content length: %zu\n", strlen(response), content_length);
 
     // Send the response to the client
     write(socket, response, strlen(response));
@@ -234,7 +234,7 @@ char *read_token(int client_socket) {
             // memcpy(substring, token, strlen(token) - 2);
             // Null-terminate the substring
             token[strlen(token) - 2] = '\0';
-            printf("token: %s len:%lu\n", token, strlen(token));
+            // printf("token: %s len:%lu\n", token, strlen(token));
             return token;
         }
     }
@@ -253,7 +253,7 @@ int read_headers(int client_socket, char *headers[]) {
             // Malformed headers
             return -1;
         }
-        printf("header: %s, header_count:%d\n", header, header_count);
+        // printf("header: %s, header_count:%d\n", header, header_count);
         if ((strlen(header) > 0) && (header_count < MAX_HEADERS)) {
             headers[header_count++] = header;
         } else {
@@ -277,12 +277,6 @@ void linkedmap_init(LinkedMap *map) {
     map->head = NULL;
 }
 
-LinkedMap linkedmap_new() {
-    LinkedMap map;
-    map.head = NULL;
-    return map;
-}
-
 void linkedmap_insert(LinkedMap *map, const char *key, PRIORITY priority, int n) {
     Node *newNode = malloc(sizeof(Node));
     if (newNode == NULL) {
@@ -300,6 +294,7 @@ void linkedmap_insert(LinkedMap *map, const char *key, PRIORITY priority, int n)
 rwlock_t *linkedmap_get_lock(LinkedMap *map, const char *key) {
     Node *current = map->head;
     while (current != NULL) {
+        // check for current->key and key being not null (TODO)
         if (strcmp(current->key, key) == 0) {
             return current->rw_lock;
         }
@@ -313,6 +308,9 @@ void linkedmap_cleanup(LinkedMap *map) {
     while (current != NULL) {
         Node *temp = current;
         current = current->next;
+
+        // check for temp->key  bein not null (TODO)
+
         free(temp->key);
         rwlock_delete(&temp->rw_lock);
         free(temp);
@@ -332,7 +330,7 @@ void proccess_connection(int client_socket, LinkedMap *fileLocks) {
                 close(client_socket);
                 return;
             }
-            printf("request line: %s\n", request_line);
+            // printf("request line: %s\n", request_line);
 
             // Parse the request line
             char method[MAX_BUFFER_SIZE] = { 0 };
@@ -347,7 +345,7 @@ void proccess_connection(int client_socket, LinkedMap *fileLocks) {
                 close(client_socket);
                 return;
             }
-            printf("method: %s, uri: %s, version: %s, parsed: %d\n", method, uri, version, parsed);
+            // printf("method: %s, uri: %s, version: %s, parsed: %d\n", method, uri, version, parsed);
 
             // Read headers
             char *headers[MAX_HEADERS];
@@ -401,23 +399,34 @@ void proccess_connection(int client_socket, LinkedMap *fileLocks) {
                 return;
             }
 
+            
+
             if (strcmp(method, "GET") == 0) {
                 // lock map
-                // pthread_mutex_lock(&mapLock);
+                pthread_mutex_lock(&mapLock);
+
+                
 
                 // get lock from map
                 rwlock_t *lock = linkedmap_get_lock(fileLocks, uri);
-                printf("uri: %s\n", uri);
+                // printf("uri: %s\n", uri);
                 if (lock == NULL) {
+                    // printf("Lock is null, inserting...\n");
                     // Insert a lock into hashtable
                     linkedmap_insert(fileLocks, uri, N_WAY, 1);
                 }
                 // unlock map
-                // pthread_mutex_unlock(&mapLock);
+                lock = linkedmap_get_lock(fileLocks, uri);
+                pthread_mutex_unlock(&mapLock);
 
+                
+                // printf("hello\n");
 
                 reader_lock(lock);
+                printf("I got a reader lock...\n");
 
+                printf("Proccessing GET connection %d....\n", client_socket);
+                sleep(3);
                 
                 // Your code for handling a valid GET request goes here
 
@@ -476,6 +485,7 @@ void proccess_connection(int client_socket, LinkedMap *fileLocks) {
                     send_response(client_socket, 404, "Not Found", "Not Found\n", 10);
                 }
 
+                printf("Done proccessing GET%d\n", client_socket);
                 reader_unlock(lock);
 
             } else if (strcmp(method, "PUT") == 0) {
@@ -490,10 +500,16 @@ void proccess_connection(int client_socket, LinkedMap *fileLocks) {
                     linkedmap_insert(fileLocks, uri, N_WAY, 1);
                 }
                 // unlock map
+                lock = linkedmap_get_lock(fileLocks, uri);
                 pthread_mutex_unlock(&mapLock);
 
 
                 writer_lock(lock);
+
+                printf("I got a writer lock...\n");
+
+                printf("Proccessing PUT connection %d....\n", client_socket);
+                sleep(3);
 
 
                 int content_len = 0;
@@ -506,7 +522,7 @@ void proccess_connection(int client_socket, LinkedMap *fileLocks) {
                         break;
                     }
                 }
-                printf("Content length: %d\n", content_len);
+                // printf("Content length: %d\n", content_len);
 
                 if (content_len <= 0) {
                     printf("Content Len <= 0\n");
@@ -532,7 +548,7 @@ void proccess_connection(int client_socket, LinkedMap *fileLocks) {
                     flags |= O_CREAT;
                     file_fd = open(uri + 1, flags, 0644);
                 } else {
-                    printf("--------file %s is not new %d-----\n", uri + 1, errno);
+                    // printf("--------file %s is not new %d-----\n", uri + 1, errno);
                 }
 
                 if (file_fd != -1) {
@@ -561,8 +577,11 @@ void proccess_connection(int client_socket, LinkedMap *fileLocks) {
                     }
                 }
 
+                printf("Done proccessing PUT %d\n", client_socket);
                 writer_unlock(lock);
+                
             }
+
 }
 
 void dummy_proccess(int client_socket) {
@@ -572,6 +591,7 @@ void dummy_proccess(int client_socket) {
 }
 
 queue_t *requestQueue = NULL;
+LinkedMap fileLocks;
 
 // Worker function
 void *worker_function() {
@@ -583,7 +603,7 @@ void *worker_function() {
             // (Your existing code for request processing goes here)
             // Process the connection
             int client_socket = *client_socket_ptr;
-            proccess_connection(client_socket, LinkedMap fileLocks);
+            proccess_connection(client_socket, &fileLocks);
             // dummy_proccess(client_socket);
             close(client_socket);
             free(client_socket_ptr);
@@ -620,7 +640,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Create and initialize a linked map
-    LinkedMap fileLocks = linkedmap_new();
+    linkedmap_init(&fileLocks);
 
 
     // Initialize the listener socket
@@ -665,7 +685,7 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
-        printf("Accepted connection: %d\n", client_socket);
+        // printf("Accepted connection: %d\n", client_socket);
 
 
         // Enqueue the client socket into the thread-safe queue
