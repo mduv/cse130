@@ -627,7 +627,7 @@ void proccess_connection(int client_socket, LinkedMap *fileLocks) {
                                 send_response_and_log(client_socket, 201, "Created", "Created\n", strlen("Created\n"), method, uri, request_id);
                             } else {
                                 // send_response(client_socket, 200, "Ok", "Ok\n", strlen("Ok\n"));
-                                send_response_and_log(client_socket, 200, "Ok", "Ok\n", strlen("Ok\n"), method, uri, request_id);
+                                send_response_and_log(client_socket, 200, "OK", "OK\n", strlen("OK\n"), method, uri, request_id);
                             }
                         }
                     }
