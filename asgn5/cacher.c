@@ -327,6 +327,7 @@ int main(int argc, char* argv[]) {
     
     // Print summary line
     printf("%d %d\n", cache.compulsoryMisses, cache.capacityMisses);
+    
 
     // Clean up and exit
     freeCache(&cache);
