@@ -13,6 +13,12 @@ typedef struct Node {
     int referencedBit;      // For Clock
 } Node;
 
+// Add a history node structure
+typedef struct HistoryNode {
+    char* item;
+    struct HistoryNode* next;
+} HistoryNode;
+
 // Define the cache structure
 typedef struct {
     Node* head;             // Pointer to the head of the linked list
@@ -21,12 +27,16 @@ typedef struct {
     int count;              // Current number of items in the cache
     int compulsoryMisses;
     int capacityMisses;
+    HistoryNode* historyHead;
+    HistoryNode* historyTail;
 } Cache;
 
 // Function to initialize an empty cache
 void initializeCache(Cache* cache, int size) {
     cache->head = NULL;
     cache->tail = NULL;
+    cache->historyHead = NULL;
+    cache->historyTail = NULL;
     cache->size = size;
     cache->count = 0;
 }
@@ -44,11 +54,68 @@ void freeCache(Cache* cache) {
         current = next;
     }
 
+    // Free the history nodes
+    HistoryNode* historyCurrent = cache->historyHead;
+    HistoryNode* historyNext;
+    while (historyCurrent != NULL) {
+        historyNext = historyCurrent->next;
+        free(historyCurrent->item);
+        free(historyCurrent);
+        historyCurrent = historyNext;
+    }
+
     // Reset the cache structure
     cache->head = NULL;
     cache->tail = NULL;
     cache->count = 0;
     cache->size = 0;
+}
+
+// Function to add an item to the history
+void addToHistory(Cache* cache, const char* item) {
+    // Allocate memory for the new history node
+    HistoryNode* newHistoryNode = (HistoryNode*)malloc(sizeof(HistoryNode));
+    if (newHistoryNode == NULL) {
+        fprintf(stderr, "Memory allocation failed\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // Allocate memory for the item and copy it
+    newHistoryNode->item = (char*)malloc(strlen(item) + 1);
+    if (newHistoryNode->item == NULL) {
+        fprintf(stderr, "Memory allocation failed\n");
+        free(newHistoryNode);
+        exit(EXIT_FAILURE);
+    }
+    strcpy(newHistoryNode->item, item);
+
+    // Set default values for the new history node
+    newHistoryNode->next = NULL;
+
+    // Add the new history node to the end of the history
+    if (cache->historyTail == NULL) {
+        // History is empty
+        cache->historyHead = newHistoryNode;
+        cache->historyTail = newHistoryNode;
+    } else {
+        // History is not empty
+        cache->historyTail->next = newHistoryNode;
+        cache->historyTail = newHistoryNode;
+    }
+}
+
+// Function to check if an item is in the history
+int isInHistory(Cache* cache, const char* item) {
+    HistoryNode* historyCurrent = cache->historyHead;
+    while (historyCurrent != NULL) {
+        if (strcmp(historyCurrent->item, item) == 0) {
+            // Item found in the history
+            return 1;
+        }
+        historyCurrent = historyCurrent->next;
+    }
+    // Item not found in the history
+    return 0;
 }
 
 
@@ -188,6 +255,9 @@ void evictIfNeeded(Cache* cache, int evictionPolicy) {
 
 // Function to add an item to the cache
 void addToCache(Cache* cache, const char* item, int evictionPolicy) {
+    // Check if the item is in the history
+    int seenBefore = isInHistory(cache, item);
+
     // Allocate memory for the new node
     Node* newNode = (Node*)malloc(sizeof(Node));
     if (newNode == NULL) {
@@ -259,6 +329,18 @@ void addToCache(Cache* cache, const char* item, int evictionPolicy) {
     // Increment the count of items in the cache
     cache->count++;
 
+    // Check if the item is a compulsory miss or a capacity miss
+    if (!seenBefore) {
+        // Compulsory Miss
+        cache->compulsoryMisses++;
+    } else if (cache->count > cache->size) {
+        // Capacity Miss
+        cache->capacityMisses++;
+    }
+
+    // Add the item to the history
+    addToHistory(cache, item);
+
     // Check if eviction is needed
     evictIfNeeded(cache, evictionPolicy);
 }
@@ -281,14 +363,7 @@ void processInput(Cache* cache, int evictionPolicy) {
             printf("HIT\n");
         } else {
             printf("MISS\n");
-            // Increment the appropriate miss counter
-            if (cache->count <= cache->size) {
-                // Compulsory miss
-                cache->compulsoryMisses++;
-            } else {
-                // Capacity miss
-                cache->capacityMisses++;
-            }
+            
             addToCache(cache, buffer, evictionPolicy);
         }
     }
