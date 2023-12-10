@@ -363,7 +363,6 @@ void processInput(Cache* cache, int evictionPolicy) {
             printf("HIT\n");
         } else {
             printf("MISS\n");
-            
             addToCache(cache, buffer, evictionPolicy);
         }
     }
