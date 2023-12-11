@@ -6,33 +6,33 @@
 
 // Define the node structure for the cache
 typedef struct Node {
-    char* item;             // Item stored in the node
-    struct Node* next;      // Pointer to the next node
-    struct Node* prev;      // Pointer to the previous node
-    int referencedBit;      // For Clock
+    char *item; // Item stored in the node
+    struct Node *next; // Pointer to the next node
+    struct Node *prev; // Pointer to the previous node
+    int referencedBit; // For Clock
 } Node;
 
 // Add a history node structure
 typedef struct HistoryNode {
-    char* item;
-    struct HistoryNode* next;
+    char *item;
+    struct HistoryNode *next;
 } HistoryNode;
 
 // Define the cache structure
 typedef struct {
-    Node* head;             // Pointer to the head of the linked list
-    Node* tail;             // Pointer to the tail of the linked list
-    int size;               // Maximum size of the cache
-    int count;              // Current number of items in the cache
+    Node *head; // Pointer to the head of the linked list
+    Node *tail; // Pointer to the tail of the linked list
+    int size; // Maximum size of the cache
+    int count; // Current number of items in the cache
     int compulsoryMisses;
     int capacityMisses;
-    HistoryNode* historyHead;
-    HistoryNode* historyTail;
-    Node* clockHand;
+    HistoryNode *historyHead;
+    HistoryNode *historyTail;
+    Node *clockHand;
 } Cache;
 
 // Function to initialize an empty cache
-void initializeCache(Cache* cache, int size) {
+void initializeCache(Cache *cache, int size) {
     cache->head = NULL;
     cache->tail = NULL;
     cache->historyHead = NULL;
@@ -42,9 +42,9 @@ void initializeCache(Cache* cache, int size) {
 }
 
 // Function to print the items in the cache
-void printCache(Cache* cache) {
+void printCache(Cache *cache) {
     printf("Cache Contents: ");
-    Node* current = cache->head;
+    Node *current = cache->head;
     while (current != NULL) {
         printf("(%s, %d), ", current->item, current->referencedBit);
         current = current->next;
@@ -52,11 +52,10 @@ void printCache(Cache* cache) {
     printf("\n");
 }
 
-
 // Function to free the memory used by the cache
-void freeCache(Cache* cache) {
-    Node* current = cache->head;
-    Node* next;
+void freeCache(Cache *cache) {
+    Node *current = cache->head;
+    Node *next;
 
     // Traverse the cache and free each node
     while (current != NULL) {
@@ -67,8 +66,8 @@ void freeCache(Cache* cache) {
     }
 
     // Free the history nodes
-    HistoryNode* historyCurrent = cache->historyHead;
-    HistoryNode* historyNext;
+    HistoryNode *historyCurrent = cache->historyHead;
+    HistoryNode *historyNext;
     while (historyCurrent != NULL) {
         historyNext = historyCurrent->next;
         free(historyCurrent->item);
@@ -84,16 +83,16 @@ void freeCache(Cache* cache) {
 }
 
 // Function to add an item to the history
-void addToHistory(Cache* cache, const char* item) {
+void addToHistory(Cache *cache, const char *item) {
     // Allocate memory for the new history node
-    HistoryNode* newHistoryNode = (HistoryNode*)malloc(sizeof(HistoryNode));
+    HistoryNode *newHistoryNode = (HistoryNode *) malloc(sizeof(HistoryNode));
     if (newHistoryNode == NULL) {
         fprintf(stderr, "Memory allocation failed\n");
         exit(EXIT_FAILURE);
     }
 
     // Allocate memory for the item and copy it
-    newHistoryNode->item = (char*)malloc(strlen(item) + 1);
+    newHistoryNode->item = (char *) malloc(strlen(item) + 1);
     if (newHistoryNode->item == NULL) {
         fprintf(stderr, "Memory allocation failed\n");
         free(newHistoryNode);
@@ -117,8 +116,8 @@ void addToHistory(Cache* cache, const char* item) {
 }
 
 // Function to check if an item is in the history
-int isInHistory(Cache* cache, const char* item) {
-    HistoryNode* historyCurrent = cache->historyHead;
+int isInHistory(Cache *cache, const char *item) {
+    HistoryNode *historyCurrent = cache->historyHead;
     while (historyCurrent != NULL) {
         if (strcmp(historyCurrent->item, item) == 0) {
             // Item found in the history
@@ -130,10 +129,9 @@ int isInHistory(Cache* cache, const char* item) {
     return 0;
 }
 
-
 // Function to check if an item is in the cache and return the corresponding node
-Node* isInCacheAndGetNode(Cache* cache, const char* item) {
-    Node* current = cache->head;
+Node *isInCacheAndGetNode(Cache *cache, const char *item) {
+    Node *current = cache->head;
     while (current != NULL) {
         if (strcmp(current->item, item) == 0) {
             // Item found in the cache, return the corresponding node
@@ -145,17 +143,15 @@ Node* isInCacheAndGetNode(Cache* cache, const char* item) {
     return NULL;
 }
 
-
-int isCacheFull(Cache* cache) {
+int isCacheFull(Cache *cache) {
     if (cache->count == cache->size) {
         return 1;
     }
     return 0;
 }
 
-
 // Function to update the cache order for LRU
-void updateCacheLRU(Cache* cache, Node* accessedNode) {
+void updateCacheLRU(Cache *cache, Node *accessedNode) {
     if (cache->tail == accessedNode) {
         return;
     }
@@ -185,20 +181,19 @@ void updateCacheLRU(Cache* cache, Node* accessedNode) {
     cache->tail = accessedNode;
 }
 
-
-void addNewNode(Cache* cache, const char* item, int evictionPolicy) {
+void addNewNode(Cache *cache, const char *item, int evictionPolicy) {
     // Check if the item is in the history
     int seenBefore = isInHistory(cache, item);
 
     // Allocate memory for the new node
-    Node* newNode = (Node*)malloc(sizeof(Node));
+    Node *newNode = (Node *) malloc(sizeof(Node));
     if (newNode == NULL) {
         fprintf(stderr, "Memory allocation failed\n");
         exit(EXIT_FAILURE);
     }
 
     // Allocate memory for the item and copy it
-    newNode->item = (char*)malloc(strlen(item) + 1);
+    newNode->item = (char *) malloc(strlen(item) + 1);
     if (newNode->item == NULL) {
         fprintf(stderr, "Memory allocation failed\n");
         free(newNode);
@@ -211,7 +206,7 @@ void addNewNode(Cache* cache, const char* item, int evictionPolicy) {
     newNode->prev = NULL;
 
     if (evictionPolicy == 3) {
-        newNode->referencedBit = 0;  // For Clock
+        newNode->referencedBit = 0; // For Clock
     }
 
     if (cache->tail == NULL) {
@@ -224,7 +219,7 @@ void addNewNode(Cache* cache, const char* item, int evictionPolicy) {
         newNode->prev = cache->tail;
         cache->tail = newNode;
     }
-    
+
     // Increment the count of items in the cache
     cache->count++;
 
@@ -245,42 +240,41 @@ void addNewNode(Cache* cache, const char* item, int evictionPolicy) {
     addToHistory(cache, item);
 }
 
-Node* findCandidateToEvict(Cache* cache, int evictionPolicy) {
+Node *findCandidateToEvict(Cache *cache, int evictionPolicy) {
     switch (evictionPolicy) {
-        case 1:  // FIFO
-            return cache->head;
-        case 2:  // LRU
-            return cache->head;
-        case 3:  // Clock
-            while (1) {
-                if (cache->clockHand->referencedBit == 0) {
-                    // Found an unreferenced item, prepare for eviction
-                    Node *nodeToEvict = cache->clockHand;
+    case 1: // FIFO
+        return cache->head;
+    case 2: // LRU
+        return cache->head;
+    case 3: // Clock
+        while (1) {
+            if (cache->clockHand->referencedBit == 0) {
+                // Found an unreferenced item, prepare for eviction
+                Node *nodeToEvict = cache->clockHand;
 
-                    // Update clockHand
-                    cache->clockHand = (cache->clockHand->next != NULL) ? cache->clockHand->next : cache->head;
+                // Update clockHand
+                cache->clockHand
+                    = (cache->clockHand->next != NULL) ? cache->clockHand->next : cache->head;
 
-                    return nodeToEvict;                    
-                } else {
-                    // Set referenced bit to 0 and move the clock hand to the next item
-                    cache->clockHand->referencedBit = 0;
+                return nodeToEvict;
+            } else {
+                // Set referenced bit to 0 and move the clock hand to the next item
+                cache->clockHand->referencedBit = 0;
 
-                    // Update clockHand
-                    cache->clockHand = (cache->clockHand->next != NULL) ? cache->clockHand->next : cache->head;
-                }
+                // Update clockHand
+                cache->clockHand
+                    = (cache->clockHand->next != NULL) ? cache->clockHand->next : cache->head;
             }
-            break;
-        default:
-            fprintf(stderr, "Invalid eviction policy\n");
-            exit(EXIT_FAILURE);
-    }
-;
+        }
+        break;
+    default: fprintf(stderr, "Invalid eviction policy\n"); exit(EXIT_FAILURE);
+    };
     return NULL;
 }
 
 // Function to evict a specific node from the cache
-void evictNode(Cache* cache, Node* node) {
-    
+void evictNode(Cache *cache, Node *node) {
+
     if (node->prev != NULL) {
         // Update the next pointer of the previous node
         node->prev->next = node->next;
@@ -304,10 +298,8 @@ void evictNode(Cache* cache, Node* node) {
     cache->count--;
 }
 
-
-
 // Function to process each item from stdin
-void processInput(Cache* cache, int evictionPolicy) {
+void processInput(Cache *cache, int evictionPolicy) {
     char buffer[1024];
     // Read items from stdin until it's closed
     while (fgets(buffer, sizeof(buffer), stdin) != NULL) {
@@ -318,11 +310,11 @@ void processInput(Cache* cache, int evictionPolicy) {
         }
 
         // Check if the item is in the cache
-        Node* accessedNode = isInCacheAndGetNode(cache, buffer);
+        Node *accessedNode = isInCacheAndGetNode(cache, buffer);
 
         if (accessedNode) {
             printf("HIT\n");
-            if (evictionPolicy == 2) {  // LRU
+            if (evictionPolicy == 2) { // LRU
                 updateCacheLRU(cache, accessedNode);
             }
             if (evictionPolicy == 3) { // CLOCK
@@ -333,7 +325,7 @@ void processInput(Cache* cache, int evictionPolicy) {
             printf("MISS\n");
             if (isCacheFull(cache)) {
                 // find candidate to evict
-                Node* nodeToEvict = findCandidateToEvict(cache, evictionPolicy);
+                Node *nodeToEvict = findCandidateToEvict(cache, evictionPolicy);
                 // evict Node
                 evictNode(cache, nodeToEvict);
             }
@@ -345,9 +337,7 @@ void processInput(Cache* cache, int evictionPolicy) {
     }
 }
 
-
-
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
     // Check command-line arguments
     if (argc != 4) {
         fprintf(stderr, "Usage: %s -N size <policy>\n", argv[0]);
@@ -358,11 +348,11 @@ int main(int argc, char* argv[]) {
     int size = atoi(argv[2]);
     int evictionPolicy;
     if (strcmp(argv[3], "-F") == 0) {
-        evictionPolicy = 1;  // FIFO
+        evictionPolicy = 1; // FIFO
     } else if (strcmp(argv[3], "-L") == 0) {
-        evictionPolicy = 2;  // LRU
+        evictionPolicy = 2; // LRU
     } else if (strcmp(argv[3], "-C") == 0) {
-        evictionPolicy = 3;  // Clock
+        evictionPolicy = 3; // Clock
     } else {
         fprintf(stderr, "Invalid eviction policy\n");
         exit(EXIT_FAILURE);
@@ -377,10 +367,9 @@ int main(int argc, char* argv[]) {
 
     // Print summary line
     printf("%d %d\n", cache.compulsoryMisses, cache.capacityMisses);
-    
+
     // Clean up and exit
     freeCache(&cache);
 
     return 0;
 }
-
