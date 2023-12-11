@@ -28,6 +28,7 @@ typedef struct {
     int capacityMisses;
     HistoryNode* historyHead;
     HistoryNode* historyTail;
+    Node* clockHand;
 } Cache;
 
 // Function to initialize an empty cache
@@ -225,64 +226,21 @@ void evictClockItem(Cache* cache, Node* clockHand) {
     free(clockHand);
 }
 
-// Helper function to swap two nodes in the cache order
-void swapNodes(Cache* cache, Node* node1, Node* node2) {
-    // Ensure both nodes are not NULL
-    if (node1 == NULL || node2 == NULL) {
-        return;
-    }
-
-    // Swap the nodes in the cache order
-    Node* tempPrev = node1->prev;
-    Node* tempNext = node1->next;
-
-    node1->prev = node2->prev;
-    node1->next = node2->next;
-
-    if (node2->prev != NULL) {
-        node2->prev->next = node1;
-    } else {
-        cache->head = node1;
-    }
-
-    if (node2->next != NULL) {
-        node2->next->prev = node1;
-    } else {
-        cache->tail = node1;
-    }
-
-    node2->prev = tempPrev;
-    node2->next = tempNext;
-
-    if (tempPrev != NULL) {
-        tempPrev->next = node2;
-    }
-
-    if (tempNext != NULL) {
-        tempNext->prev = node2;
-    }
-}
-
 
 // Function to evict an item using the Clock algorithm
-void evictClock(Cache* cache, Node* newNode) {
+void evictClock(Cache* cache) {
     if (cache->head == NULL) {
         // Cache is empty, nothing to evict
         return;
     }
 
     Node* clockHand = cache->head;
-    
     while (1) {
+        // printf("ClockHand: %s, ReferencedBit: %d\n", clockHand->item, clockHand->referencedBit);
         if (clockHand->referencedBit == 0) {
             // Found an unreferenced item, evict it
-            printf("ClockHand: %s\n", clockHand->item);
-            if (cache->count > cache->size) {
-                swapNodes(cache, clockHand, newNode);
-            }
-
             // item to be evicted is clockhand, need to replace clockhand with the new item
-
+            // printf("Evicting: %s\n", clockHand->item);
             evictClockItem(cache, clockHand);
             break;
         } else {
@@ -301,9 +259,9 @@ void evictClock(Cache* cache, Node* newNode) {
 
 
 // Function to evict the oldest item if the cache is full
-void evictIfNeeded(Cache* cache, int evictionPolicy, Node* newNode) {
+void evictIfNeeded(Cache* cache, int evictionPolicy, int seenBefore) {
     // printf("cache count: %d\n", cache->count);
-    if (cache->count > cache->size) {
+    if (cache->count >= cache->size && !seenBefore) {
         // Cache is full, eviction needed
 
         switch (evictionPolicy) {
@@ -314,7 +272,7 @@ void evictIfNeeded(Cache* cache, int evictionPolicy, Node* newNode) {
                 evictLRU(cache);
                 break;
             case 3:  // Clock
-                evictClock(cache, newNode);
+                evictClock(cache);
                 break;
             default:
                 fprintf(stderr, "Invalid eviction policy\n");
@@ -361,8 +319,12 @@ void updateCacheLRU(Cache* cache, Node* accessedNode) {
 
 // Function to add an item to the cache
 void addToCache(Cache* cache, const char* item, int evictionPolicy) {
+
     // Check if the item is in the history
     int seenBefore = isInHistory(cache, item);
+
+    // Check if eviction is needed
+    evictIfNeeded(cache, evictionPolicy, seenBefore);
 
     // Allocate memory for the new node
     Node* newNode = (Node*)malloc(sizeof(Node));
@@ -416,9 +378,6 @@ void addToCache(Cache* cache, const char* item, int evictionPolicy) {
     // Add the item to the history
     addToHistory(cache, item);
 
-    // Check if eviction is needed
-    evictIfNeeded(cache, evictionPolicy, newNode);
-
 }
 
 
@@ -447,11 +406,13 @@ void processInput(Cache* cache, int evictionPolicy) {
                 // updateCacheClock(cache, accessedNode);
                 accessedNode->referencedBit = 1;
             }
-            printCache(cache);
+            // printCache(cache);
         } else {
             printf("MISS\n");
+            // printCache(cache);
             addToCache(cache, buffer, evictionPolicy);
-            printCache(cache);
+            // printf("-----------------After adding-----------------\n");
+            // printCache(cache);
         }
     }
 }
@@ -482,6 +443,7 @@ int main(int argc, char* argv[]) {
     // Initialize the cache
     Cache cache;
     initializeCache(&cache, size);
+    cache.clockHand = cache.head;
 
     // Process input from stdin
     processInput(&cache, evictionPolicy);
