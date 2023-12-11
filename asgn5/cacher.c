@@ -131,20 +131,6 @@ int isInHistory(Cache* cache, const char* item) {
 }
 
 
-// Function to check if an item is in the cache
-int isInCache(Cache* cache, const char* item) {
-    Node* current = cache->head;
-    while (current != NULL) {
-        if (strcmp(current->item, item) == 0) {
-            // Item found in the cache
-            return 1;
-        }
-        current = current->next;
-    }
-    // Item not found in the cache
-    return 0;
-}
-
 // Function to check if an item is in the cache and return the corresponding node
 Node* isInCacheAndGetNode(Cache* cache, const char* item) {
     Node* current = cache->head;
@@ -160,135 +146,20 @@ Node* isInCacheAndGetNode(Cache* cache, const char* item) {
 }
 
 
-// Function to evict the oldest item (FIFO)
-void evictOldest(Cache* cache) {
-    if (cache->head != NULL) {
-        // Remove the head of the cache (oldest item)
-        Node* temp = cache->head;
-        cache->head = cache->head->next;
-
-        // Free the memory of the evicted item
-        free(temp->item);
-        free(temp);
-
-        // Update the previous pointer of the new head
-        if (cache->head != NULL) {
-            cache->head->prev = NULL;
-        } else {
-            // If the cache is now empty, update the tail
-            cache->tail = NULL;
-        }
+int isCacheFull(Cache* cache) {
+    if (cache->count == cache->size) {
+        return 1;
     }
+    return 0;
 }
 
-// Function to evict the least recently used item (LRU)
-void evictLRU(Cache* cache) {
-    if (cache->head != NULL) {
-        // Remove the head of the cache (oldest item)
-        Node* temp = cache->head;
-        cache->head = cache->head->next;
-
-        // Free the memory of the evicted item
-        free(temp->item);
-        free(temp);
-
-        // Update the previous pointer of the new head
-        if (cache->head != NULL) {
-            cache->head->prev = NULL;
-        } else {
-            // If the cache is now empty, update the tail
-            cache->tail = NULL;
-        }
-    }
-}
-
-// Function to evict an item using the Clock algorithm
-// Helper function to evict an item pointed by the clock hand
-void evictClockItem(Cache* cache, Node* clockHand) {
-    if (clockHand->prev != NULL) {
-        // Update the next pointer of the previous node
-        clockHand->prev->next = clockHand->next;
-    } else {
-        // Clock hand is at the head, update the head
-        cache->head = clockHand->next;
-    }
-
-    if (clockHand->next != NULL) {
-        // Update the previous pointer of the next node
-        clockHand->next->prev = clockHand->prev;
-    } else {
-        // Clock hand is at the tail, update the tail
-        cache->tail = clockHand->prev;
-    }
-
-    // Free the memory of the evicted item
-    free(clockHand->item);
-    free(clockHand);
-}
-
-
-// Function to evict an item using the Clock algorithm
-void evictClock(Cache* cache) {
-    if (cache->head == NULL) {
-        // Cache is empty, nothing to evict
-        return;
-    }
-
-    Node* clockHand = cache->head;
-    while (1) {
-        // printf("ClockHand: %s, ReferencedBit: %d\n", clockHand->item, clockHand->referencedBit);
-        if (clockHand->referencedBit == 0) {
-            // Found an unreferenced item, evict it
-            // item to be evicted is clockhand, need to replace clockhand with the new item
-            // printf("Evicting: %s\n", clockHand->item);
-            evictClockItem(cache, clockHand);
-            break;
-        } else {
-            // Set referenced bit to 0 and move the clock hand to the next item
-            clockHand->referencedBit = 0;
-            clockHand = clockHand->next;
-
-            // If the clock hand reaches the end, wrap around to the head
-            if (clockHand == NULL) {
-                clockHand = cache->head;
-            }
-        }
-    }
-}
-
-
-
-// Function to evict the oldest item if the cache is full
-void evictIfNeeded(Cache* cache, int evictionPolicy, int seenBefore) {
-    // printf("cache count: %d\n", cache->count);
-    if (cache->count >= cache->size && !seenBefore) {
-        // Cache is full, eviction needed
-
-        switch (evictionPolicy) {
-            case 1:  // FIFO
-                evictOldest(cache);
-                break;
-            case 2:  // LRU
-                evictLRU(cache);
-                break;
-            case 3:  // Clock
-                evictClock(cache);
-                break;
-            default:
-                fprintf(stderr, "Invalid eviction policy\n");
-                exit(EXIT_FAILURE);
-        }
-
-        // Decrement the count of items in the cache
-        cache->count--;
-    }
-}
 
 // Function to update the cache order for LRU
 void updateCacheLRU(Cache* cache, Node* accessedNode) {
     if (cache->tail == accessedNode) {
         return;
     }
+
     // Remove the accessed node from its current position
     if (accessedNode->prev != NULL) {
         accessedNode->prev->next = accessedNode->next;
@@ -315,16 +186,9 @@ void updateCacheLRU(Cache* cache, Node* accessedNode) {
 }
 
 
-
-
-// Function to add an item to the cache
-void addToCache(Cache* cache, const char* item, int evictionPolicy) {
-
+void addNewNode(Cache* cache, const char* item, int evictionPolicy) {
     // Check if the item is in the history
     int seenBefore = isInHistory(cache, item);
-
-    // Check if eviction is needed
-    evictIfNeeded(cache, evictionPolicy, seenBefore);
 
     // Allocate memory for the new node
     Node* newNode = (Node*)malloc(sizeof(Node));
@@ -360,24 +224,84 @@ void addToCache(Cache* cache, const char* item, int evictionPolicy) {
         newNode->prev = cache->tail;
         cache->tail = newNode;
     }
-
-
-
+    
     // Increment the count of items in the cache
     cache->count++;
+
+    if (cache->count == 1) {
+        cache->clockHand = cache->head;
+    }
 
     // Check if the item is a compulsory miss or a capacity miss
     if (!seenBefore) {
         // Compulsory Miss
         cache->compulsoryMisses++;
-    } else if (cache->count > cache->size) {
+    } else {
         // Capacity Miss
         cache->capacityMisses++;
     }
 
     // Add the item to the history
     addToHistory(cache, item);
+}
 
+Node* findCandidateToEvict(Cache* cache, int evictionPolicy) {
+    switch (evictionPolicy) {
+        case 1:  // FIFO
+            return cache->head;
+        case 2:  // LRU
+            return cache->head;
+        case 3:  // Clock
+            while (1) {
+                if (cache->clockHand->referencedBit == 0) {
+                    // Found an unreferenced item, prepare for eviction
+                    Node *nodeToEvict = cache->clockHand;
+
+                    // Update clockHand
+                    cache->clockHand = (cache->clockHand->next != NULL) ? cache->clockHand->next : cache->head;
+
+                    return nodeToEvict;                    
+                } else {
+                    // Set referenced bit to 0 and move the clock hand to the next item
+                    cache->clockHand->referencedBit = 0;
+
+                    // Update clockHand
+                    cache->clockHand = (cache->clockHand->next != NULL) ? cache->clockHand->next : cache->head;
+                }
+            }
+            break;
+        default:
+            fprintf(stderr, "Invalid eviction policy\n");
+            exit(EXIT_FAILURE);
+    }
+;
+    return NULL;
+}
+
+// Function to evict a specific node from the cache
+void evictNode(Cache* cache, Node* node) {
+    
+    if (node->prev != NULL) {
+        // Update the next pointer of the previous node
+        node->prev->next = node->next;
+    } else {
+        // Node is at the head, update the head
+        cache->head = node->next;
+    }
+
+    if (node->next != NULL) {
+        // Update the previous pointer of the next node
+        node->next->prev = node->prev;
+    } else {
+        // Node is at the tail, update the tail
+        cache->tail = node->prev;
+    }
+
+    // Free the memory of the evicted item
+    free(node->item);
+    free(node);
+
+    cache->count--;
 }
 
 
@@ -396,21 +320,25 @@ void processInput(Cache* cache, int evictionPolicy) {
         // Check if the item is in the cache
         Node* accessedNode = isInCacheAndGetNode(cache, buffer);
 
-        if (isInCache(cache, buffer)) {
+        if (accessedNode) {
             printf("HIT\n");
-            // Update the cache order for LRU
             if (evictionPolicy == 2) {  // LRU
                 updateCacheLRU(cache, accessedNode);
             }
-            if (evictionPolicy == 3) {
-                // updateCacheClock(cache, accessedNode);
+            if (evictionPolicy == 3) { // CLOCK
                 accessedNode->referencedBit = 1;
             }
             // printCache(cache);
         } else {
             printf("MISS\n");
-            // printCache(cache);
-            addToCache(cache, buffer, evictionPolicy);
+            if (isCacheFull(cache)) {
+                // find candidate to evict
+                Node* nodeToEvict = findCandidateToEvict(cache, evictionPolicy);
+                // evict Node
+                evictNode(cache, nodeToEvict);
+            }
+            addNewNode(cache, buffer, evictionPolicy);
+
             // printf("-----------------After adding-----------------\n");
             // printCache(cache);
         }
@@ -443,16 +371,13 @@ int main(int argc, char* argv[]) {
     // Initialize the cache
     Cache cache;
     initializeCache(&cache, size);
-    cache.clockHand = cache.head;
 
     // Process input from stdin
     processInput(&cache, evictionPolicy);
 
-    
     // Print summary line
     printf("%d %d\n", cache.compulsoryMisses, cache.capacityMisses);
     
-
     // Clean up and exit
     freeCache(&cache);
 
