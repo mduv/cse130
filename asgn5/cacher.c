@@ -41,6 +41,18 @@ void initializeCache(Cache* cache, int size) {
     cache->count = 0;
 }
 
+// Function to print the items in the cache
+void printCache(Cache* cache) {
+    printf("Cache Contents: ");
+    Node* current = cache->head;
+    while (current != NULL) {
+        printf("%s ", current->item);
+        current = current->next;
+    }
+    printf("\n");
+}
+
+
 // Function to free the memory used by the cache
 void freeCache(Cache* cache) {
     Node* current = cache->head;
@@ -133,6 +145,21 @@ int isInCache(Cache* cache, const char* item) {
     return 0;
 }
 
+// Function to check if an item is in the cache and return the corresponding node
+Node* isInCacheAndGetNode(Cache* cache, const char* item) {
+    Node* current = cache->head;
+    while (current != NULL) {
+        if (strcmp(current->item, item) == 0) {
+            // Item found in the cache, return the corresponding node
+            return current;
+        }
+        current = current->next;
+    }
+    // Item not found in the cache
+    return NULL;
+}
+
+
 // Function to evict the oldest item (FIFO)
 void evictOldest(Cache* cache) {
     if (cache->head != NULL) {
@@ -156,21 +183,21 @@ void evictOldest(Cache* cache) {
 
 // Function to evict the least recently used item (LRU)
 void evictLRU(Cache* cache) {
-    if (cache->tail != NULL) {
-        // Remove the tail of the cache (least recently used item)
-        Node* temp = cache->tail;
-        cache->tail = cache->tail->prev;
+    if (cache->head != NULL) {
+        // Remove the head of the cache (oldest item)
+        Node* temp = cache->head;
+        cache->head = cache->head->next;
 
         // Free the memory of the evicted item
         free(temp->item);
         free(temp);
 
-        // Update the next pointer of the new tail
-        if (cache->tail != NULL) {
-            cache->tail->next = NULL;
+        // Update the previous pointer of the new head
+        if (cache->head != NULL) {
+            cache->head->prev = NULL;
         } else {
-            // If the cache is now empty, update the head
-            cache->head = NULL;
+            // If the cache is now empty, update the tail
+            cache->tail = NULL;
         }
     }
 }
@@ -229,6 +256,7 @@ void evictClock(Cache* cache) {
 
 // Function to evict the oldest item if the cache is full
 void evictIfNeeded(Cache* cache, int evictionPolicy) {
+    // printf("cache count: %d\n", cache->count);
     if (cache->count > cache->size) {
         // Cache is full, eviction needed
 
@@ -251,6 +279,38 @@ void evictIfNeeded(Cache* cache, int evictionPolicy) {
         cache->count--;
     }
 }
+
+// Function to update the cache order for LRU
+void updateCacheLRU(Cache* cache, Node* accessedNode) {
+    if (cache->tail == accessedNode) {
+        return;
+    }
+    // Remove the accessed node from its current position
+    if (accessedNode->prev != NULL) {
+        accessedNode->prev->next = accessedNode->next;
+    } else {
+        // The accessed node is at the head
+        cache->head = accessedNode->next;
+    }
+
+    if (accessedNode->next != NULL) {
+        accessedNode->next->prev = accessedNode->prev;
+    }
+
+    // Update the tail to point to the accessed node
+    accessedNode->prev = cache->tail;
+    accessedNode->next = NULL;
+
+    // Update the tail of the cache to the accessed node
+    if (cache->tail != NULL) {
+        cache->tail->next = accessedNode;
+    }
+
+    // Update the tail to the accessed node
+    cache->tail = accessedNode;
+}
+
+
 
 
 // Function to add an item to the cache
@@ -297,14 +357,14 @@ void addToCache(Cache* cache, const char* item, int evictionPolicy) {
             break;
         case 2:  // LRU
             // Add the new node to the front of the cache
-            newNode->next = cache->head;
-            if (cache->head != NULL) {
-                cache->head->prev = newNode;
-            }
-            cache->head = newNode;
-
-            // If the cache was empty, update the tail
             if (cache->tail == NULL) {
+                // Cache is empty
+                cache->head = newNode;
+                cache->tail = newNode;
+            } else {
+                // Cache is not empty
+                cache->tail->next = newNode;
+                newNode->prev = cache->tail;
                 cache->tail = newNode;
             }
             break;
@@ -343,6 +403,7 @@ void addToCache(Cache* cache, const char* item, int evictionPolicy) {
 
     // Check if eviction is needed
     evictIfNeeded(cache, evictionPolicy);
+
 }
 
 
@@ -359,11 +420,19 @@ void processInput(Cache* cache, int evictionPolicy) {
         }
 
         // Check if the item is in the cache
+        Node* accessedNode = isInCacheAndGetNode(cache, buffer);
+
         if (isInCache(cache, buffer)) {
             printf("HIT\n");
+            // Update the cache order for LRU
+            if (evictionPolicy == 2) {  // LRU
+                updateCacheLRU(cache, accessedNode);
+            }
+            // printCache(cache);
         } else {
             printf("MISS\n");
             addToCache(cache, buffer, evictionPolicy);
+            // printCache(cache);
         }
     }
 }
