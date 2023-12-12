@@ -135,6 +135,7 @@ Node *isInCacheAndGetNode(Cache *cache, const char *item) {
     while (current != NULL) {
         if (strcmp(current->item, item) == 0) {
             // Item found in the cache, return the corresponding node
+            // printf("Found a match in cache: item in cache - %s, item passed - %s\n", current->item, item);
             return current;
         }
         current = current->next;
@@ -265,6 +266,7 @@ Node *findCandidateToEvict(Cache *cache, int evictionPolicy) {
                 cache->clockHand
                     = (cache->clockHand->next != NULL) ? cache->clockHand->next : cache->head;
             }
+            // printf("clockhand: %s\n", cache->clockHand->item);
         }
         break;
     default: fprintf(stderr, "Invalid eviction policy\n"); exit(EXIT_FAILURE);
@@ -298,6 +300,34 @@ void evictNode(Cache *cache, Node *node) {
     cache->count--;
 }
 
+void replaceItem(Cache *cache, Node *nodeToReplace, const char *newItem) {
+    free(nodeToReplace->item);
+    // Allocate memory for the item and copy it
+    char *item = (char *) malloc(strlen(newItem) + 1);
+    if (item == NULL) {
+        fprintf(stderr, "Memory allocation failed\n");
+        exit(EXIT_FAILURE);
+    }
+    strcpy(item, newItem);
+
+    nodeToReplace->item = item;
+
+    // Check if the item is in the history
+    int seenBefore = isInHistory(cache, nodeToReplace->item);
+
+    // Check if the item is a compulsory miss or a capacity miss
+    if (!seenBefore) {
+        // Compulsory Miss
+        cache->compulsoryMisses++;
+    } else {
+        // Capacity Miss
+        cache->capacityMisses++;
+    }
+
+    // Add the item to the history
+    addToHistory(cache, nodeToReplace->item);
+}
+
 // Function to process each item from stdin
 void processInput(Cache *cache, int evictionPolicy) {
     char buffer[1024];
@@ -308,6 +338,9 @@ void processInput(Cache *cache, int evictionPolicy) {
         if (length > 0 && buffer[length - 1] == '\n') {
             buffer[length - 1] = '\0';
         }
+
+        // printf("in processInput\n");
+        // printCache(cache);
 
         // Check if the item is in the cache
         Node *accessedNode = isInCacheAndGetNode(cache, buffer);
@@ -326,10 +359,17 @@ void processInput(Cache *cache, int evictionPolicy) {
             if (isCacheFull(cache)) {
                 // find candidate to evict
                 Node *nodeToEvict = findCandidateToEvict(cache, evictionPolicy);
-                // evict Node
-                evictNode(cache, nodeToEvict);
+                if (evictionPolicy == 3) { // CLOCK
+                    replaceItem(cache, nodeToEvict, buffer);
+                } else {
+                    // evict Node
+                    evictNode(cache, nodeToEvict);
+                    addNewNode(cache, buffer, evictionPolicy);
+                }
+
+            } else {
+                addNewNode(cache, buffer, evictionPolicy);
             }
-            addNewNode(cache, buffer, evictionPolicy);
 
             // printf("-----------------After adding-----------------\n");
             // printCache(cache);
